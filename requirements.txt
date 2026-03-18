@@ -1,0 +1,18 @@
+# Hallucination Detection via Attention Entropy
+# Core dependencies (pinned for reproducibility)
+
+# Math & statistics
+numpy>=1.24.0,<2.1
+scipy>=1.10.0,<1.15
+
+# Deep learning
+torch>=2.0.0,<2.6
+transformers>=4.30.0,<4.47
+
+# Testing
+pytest>=7.0.0,<9.1
+
+# Optional: visualization & analysis
+# matplotlib>=3.7.0
+# seaborn>=0.12.0
+# pandas>=2.0.0
