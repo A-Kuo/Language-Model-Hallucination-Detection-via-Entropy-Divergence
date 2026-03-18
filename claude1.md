@@ -80,11 +80,11 @@ TokenizationHelper, setup_logger, Timer, serialize_result/deserialize_result, ba
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `test_attention_analyzer.py` | 32 | Entropy bounds, KL properties, Gibbs' inequality, numerical stability |
-| `test_hypothesis_test.py` | 34 | Z-scores, p-values, decision boundaries |
-| `test_integration.py` | 20 | Full pipeline, serialization roundtrip |
+| `test_attention_analyzer.py` | 32 | Entropy bounds, KL properties, Gibbs' inequality, numerical stability, torch tensor tests |
 
-Key properties verified: entropy bounded by log₂(T), KL ≥ 0, p-values ∈ [0,1], isotonic monotonicity.
+Key mathematical properties verified: entropy non-negative and bounded by log₂(T), entropy monotonically increasing with uniformity, KL ≥ 0 (Gibbs' inequality), KL asymmetric, numerical stability with near-zero weights.
+
+Each `.py` module also contains a `__main__` self-test block for standalone validation of hypothesis test scenarios, calibrator routing, and isotonic regression.
 
 ---
 

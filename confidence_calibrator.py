@@ -36,8 +36,8 @@ Mathematical Foundation:
        τ_low  = 0.50 (uncertain zone is wide)
 
 Usage:
-    from src.hypothesis_test import HallucinationHypothesisTest
-    from src.confidence_calibrator import ConfidenceCalibrator, Decision
+    from hypothesis_test import HallucinationHypothesisTest
+    from confidence_calibrator import ConfidenceCalibrator, Decision
 
     tester = HallucinationHypothesisTest()
     calibrator = ConfidenceCalibrator()
@@ -59,7 +59,7 @@ import numpy as np
 # Type hint only
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from src.hypothesis_test import HypothesisTestResult
+    from hypothesis_test import HypothesisTestResult
 
 
 # ---------------------------------------------------------------------------

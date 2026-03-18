@@ -10,7 +10,7 @@ Provides:
     - batch_texts: chunk a list of strings for memory-efficient processing
 
 Usage:
-    from src.utils import setup_logger, Timer, TokenizationHelper
+    from utils import setup_logger, Timer, TokenizationHelper
 
     logger = setup_logger("hallucination_detection")
     with Timer("forward_pass", logger=logger):

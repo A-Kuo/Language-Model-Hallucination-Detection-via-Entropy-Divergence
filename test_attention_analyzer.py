@@ -14,8 +14,8 @@ Strategy:
     - Section 4: Full model integration tests (marked slow, skipped by default).
 
 Run:
-    pytest tests/test_attention_analyzer.py -v
-    pytest tests/test_attention_analyzer.py -v -k "not torch"  # numpy-only
+    pytest test_attention_analyzer.py -v
+    pytest test_attention_analyzer.py -v -k "not torch"  # numpy-only
 """
 
 import sys
@@ -25,8 +25,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# Ensure src/ is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Ensure repo root is importable
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # --- Conditional imports ---
 # The standalone math functions live at module level but don't need torch.
@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
     # This works if torch is installed but won't load the model
-    from src.attention_analyzer import (
+    from attention_analyzer import (
         compute_entropy_from_weights,
         compute_kl_divergence,
     )
@@ -59,6 +59,7 @@ except ImportError:
 # Check if torch is available for tensor-based tests
 try:
     import torch
+    import transformers  # noqa: F401
     _HAS_TORCH = True
 except ImportError:
     _HAS_TORCH = False
@@ -250,7 +251,7 @@ class TestInternalComputeEntropy:
 
     def _make_stub(self):
         """Create analyzer stub without loading a model."""
-        from src.attention_analyzer import AttentionAnalyzer
+        from attention_analyzer import AttentionAnalyzer
         stub = object.__new__(AttentionAnalyzer)
         stub.eps = 1e-12
         return stub
@@ -299,7 +300,7 @@ class TestInternalComputeCrossLayerKL:
     """Test _compute_cross_layer_kl with synthetic torch tensors."""
 
     def _make_stub(self):
-        from src.attention_analyzer import AttentionAnalyzer
+        from attention_analyzer import AttentionAnalyzer
         stub = object.__new__(AttentionAnalyzer)
         stub.eps = 1e-12
         return stub

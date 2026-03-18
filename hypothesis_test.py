@@ -34,8 +34,8 @@ Mathematical Foundation:
     Default significance level α = 0.01  →  z_critical ≈ 2.576
 
 Usage:
-    from src.attention_analyzer import AttentionAnalyzer
-    from src.hypothesis_test import HallucinationHypothesisTest
+    from attention_analyzer import AttentionAnalyzer
+    from hypothesis_test import HallucinationHypothesisTest
 
     analyzer = AttentionAnalyzer(model_name="gpt2")
     tester = HallucinationHypothesisTest()
@@ -59,7 +59,7 @@ from scipy import stats as scipy_stats
 # Type hint only — avoid circular import at runtime
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from src.attention_analyzer import AttentionAnalysisResult
+    from attention_analyzer import AttentionAnalysisResult
 
 
 # ---------------------------------------------------------------------------
