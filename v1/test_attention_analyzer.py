@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# Ensure repo root is importable
+# Ensure v1/ directory is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # --- Conditional imports ---

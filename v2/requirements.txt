@@ -1,0 +1,6 @@
+numpy>=1.20
+scipy>=1.7
+# For full pipeline (model + API):
+# torch
+# transformers
+# anthropic
