@@ -13,7 +13,7 @@ Usage:
     python v2/pipeline.py --synthetic --num_samples 500
 
     # Full pipeline (requires model + API key)
-    python v2/pipeline.py --model meta-llama/Llama-3.1-8B --data data/train.jsonl
+    python v2/pipeline.py --model EleutherAI/pythia-160m --data data/train.jsonl
 
     # Evaluate pre-trained detector
     python v2/pipeline.py --load detector.pkl --data data/test.jsonl
@@ -254,7 +254,7 @@ def main():
     parser.add_argument("--synthetic", action="store_true", help="Run on synthetic data")
     parser.add_argument("--num_samples", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--model", type=str, default="gpt2", help="HuggingFace model")
+    parser.add_argument("--model", type=str, default="EleutherAI/pythia-160m", help="HuggingFace model")
     parser.add_argument("--data", type=str, help="Path to labeled JSONL data")
     parser.add_argument("--save", type=str, help="Save detector to this path")
     parser.add_argument("--load", type=str, help="Load pre-trained detector")

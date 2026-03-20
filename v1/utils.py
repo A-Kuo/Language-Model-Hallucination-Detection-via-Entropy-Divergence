@@ -148,7 +148,7 @@ class TokenizationHelper:
     Lazily loads the tokenizer on first use.
     """
 
-    def __init__(self, model_name: str = "gpt2") -> None:
+    def __init__(self, model_name: str = "EleutherAI/pythia-160m") -> None:
         self.model_name = model_name
         self._tokenizer = None
 

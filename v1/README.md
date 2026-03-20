@@ -58,7 +58,9 @@ pip install -r requirements.txt
 pytest test_attention_analyzer.py -v
 ```
 
-*For full demo (GPT-2 forward pass), see `v1/claude1.md` for module details and extension points.*
+Default model is [EleutherAI/pythia-160m](https://huggingface.co/EleutherAI/pythia-160m) — small, CPU-friendly, fully open-source. Any HuggingFace model with `output_attentions` support works.
+
+*See `v1/claude1.md` for module details and extension points.*
 
 ---
 

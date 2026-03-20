@@ -28,7 +28,7 @@ Mathematical Foundation:
     (hypothesis_test.py) and confidence calibrator (confidence_calibrator.py).
 
 Usage:
-    analyzer = AttentionAnalyzer(model_name="gpt2")
+    analyzer = AttentionAnalyzer(model_name="EleutherAI/pythia-160m")
     result = analyzer.analyze("The capital of France is")
     print(result.mean_entropy)
     print(result.total_kl_divergence)
@@ -91,7 +91,7 @@ class AttentionAnalyzer:
     Parameters
     ----------
     model_name : str
-        HuggingFace model ID (default "gpt2", 124M params).
+        HuggingFace model ID (default "EleutherAI/pythia-160m", 160M params).
     device : str | None
         "cuda", "cpu", or None for auto-detect.
     precision : torch.dtype
@@ -102,7 +102,7 @@ class AttentionAnalyzer:
 
     def __init__(
         self,
-        model_name: str = "gpt2",
+        model_name: str = "EleutherAI/pythia-160m",
         device: Optional[str] = None,
         precision: torch.dtype = torch.float32,
         eps: float = 1e-12,
@@ -122,8 +122,8 @@ class AttentionAnalyzer:
 
         # Cache architecture constants from model config
         config = self._model.config
-        self.num_layers: int = config.n_layer
-        self.num_heads: int = config.n_head
+        self.num_layers: int = getattr(config, "num_hidden_layers", getattr(config, "n_layer", None))
+        self.num_heads: int = getattr(config, "num_attention_heads", getattr(config, "n_head", None))
 
     # ------------------------------------------------------------------
     # Public API
@@ -423,5 +423,5 @@ if __name__ == "__main__":
 
     print(f"\n{'=' * 60}")
     print("All standalone math checks passed ✅")
-    print("To run with GPT-2, use: AttentionAnalyzer(model_name='gpt2')")
+    print("To run with a model, use: AttentionAnalyzer(model_name='EleutherAI/pythia-160m')")
     print(f"{'=' * 60}")

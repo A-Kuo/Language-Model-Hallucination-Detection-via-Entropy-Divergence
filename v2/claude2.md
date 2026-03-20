@@ -36,6 +36,14 @@ D_KL(layer_l || layer_{l+1}) = Σ p · log(p/q)
 
 ---
 
+## Model Stack
+
+- **Local model**: Default `EleutherAI/pythia-160m` (EleutherAI, Apache 2.0). Any HuggingFace causal LM works: Llama, Mistral, Phi, etc.
+- **LLM-as-judge**: Claude (Anthropic API) for QA generation and answer labeling.
+- **No OpenAI dependencies**: The codebase does not use any OpenAI models or APIs.
+
+---
+
 ## Self-Data Pipeline
 
 Claude generates QA → local model answers → Claude judges (correct/hallucinated) → feature engineer extracts 18D → train classifier. Scales linearly with API budget.
@@ -72,6 +80,7 @@ The refusal/known-entity competition is a discrete switch. Our logistic regressi
 - Add feature families from CHARM, Multi-View Attention papers
 - Integrate activation probing for circuit-level signals
 - Domain-specific calibration from corpus
+- Use larger local models (Llama-3, Mistral, Phi-3) for richer hallucination patterns
 
 ---
 
@@ -85,3 +94,4 @@ The refusal/known-entity competition is a discrete switch. Our logistic regressi
 6. Shannon (1948). *A Mathematical Theory of Communication.*
 7. Batson et al. (2025). *On the Biology of a Large Language Model.* Anthropic.
 8. Templeton et al. (2025). *Circuit Tracing.* Anthropic.
+9. Biderman et al. (2023). *Pythia: A Suite for Analyzing Large Language Models.* ICML.

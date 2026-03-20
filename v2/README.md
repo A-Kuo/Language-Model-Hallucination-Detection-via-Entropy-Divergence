@@ -2,7 +2,7 @@
 
 **Research-grade hallucination detection using self-generated labeled data and five feature families from cutting-edge papers.**
 
-Scaled successor to v1. v2 eliminates hand-tuned baselines by training a lightweight classifier on features from any open-weight model, labeled by an LLM-as-judge.
+Scaled successor to v1. v2 eliminates hand-tuned baselines by training a lightweight classifier on features from any open-weight model, labeled by an LLM-as-judge (Claude).
 
 ---
 
@@ -10,9 +10,9 @@ Scaled successor to v1. v2 eliminates hand-tuned baselines by training a lightwe
 
 | | v1 | v2 |
 |---|---|---|
-| **Model** | GPT-2 only | Any HuggingFace model |
+| **Model** | Pythia only | Any HuggingFace model (Llama, Mistral, Phi, Pythia) |
 | **Features** | 2 families (entropy, KL) | 5 families (+ lookback, frequency, spectral) |
-| **Labels** | Hand-tuned Z-test | LLM-as-judge on self-generated QA |
+| **Labels** | Hand-tuned Z-test | LLM-as-judge (Claude) on self-generated QA |
 | **Classifier** | Hypothesis test | Logistic regression / MLP |
 | **Data** | None | Self-generated, scales with API budget |
 
@@ -31,15 +31,17 @@ Scaled successor to v1. v2 eliminates hand-tuned baselines by training a lightwe
 ## Quickstart
 
 ```bash
-# Synthetic demo (no model/API) — run from repo root
-pip install numpy scipy
-python -c "import sys; sys.path.insert(0,'v2'); exec(open('v2/pipeline.py').read())" 
-# or directly:
-cd v2 && python pipeline.py --synthetic --num_samples 1000
+cd v2/
+pip install -r requirements.txt
+
+# Synthetic demo (no model/API)
+python pipeline.py --synthetic --num_samples 1000
 
 # Full pipeline (requires ANTHROPIC_API_KEY)
-python v2/pipeline.py --data data/train.jsonl --model gpt2 --save detector.pkl
+python pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m --save detector.pkl
 ```
+
+Default local model is [EleutherAI/pythia-160m](https://huggingface.co/EleutherAI/pythia-160m). For better hallucination rates, use larger models like Llama or Mistral.
 
 ---
 

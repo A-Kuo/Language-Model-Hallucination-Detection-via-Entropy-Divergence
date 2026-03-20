@@ -53,9 +53,10 @@ confidence < 0.50  →  UNRELIABLE (reject)
 
 ### `attention_analyzer.py`
 
-- Loads GPT-2, runs forward pass with `output_attentions=True`
+- Default model: `EleutherAI/pythia-160m`. Any HuggingFace causal LM with `output_attentions=True` works.
 - **Layer-head entropy matrix** `(L, H)`: Shannon entropy of last token's attention row per head
 - **Cross-layer KL**: pairwise KL between consecutive layers' averaged attention
+- Config attributes resolved via `getattr` fallback chain (`num_hidden_layers` / `n_layer`) for cross-architecture compatibility
 - Standalone `compute_entropy_from_weights()` and `compute_kl_divergence()` work with raw numpy — no model needed
 
 ### `hypothesis_test.py`
@@ -64,6 +65,7 @@ confidence < 0.50  →  UNRELIABLE (reject)
 - **Test statistic**: weighted Z_entropy + Z_kl + Z_spread
 - **Decision**: reject H₀ if Z > z_critical at α
 - `calibrate_from_corpus()` for domain adaptation
+- Default baselines estimated from small causal LMs on factual text
 
 ### `confidence_calibrator.py`
 
@@ -72,7 +74,7 @@ confidence < 0.50  →  UNRELIABLE (reject)
 
 ### `utils.py`
 
-TokenizationHelper, setup_logger, Timer, serialize_result/deserialize_result, batch_texts.
+TokenizationHelper (default: Pythia), setup_logger, Timer, serialize_result/deserialize_result, batch_texts.
 
 ---
 
@@ -94,14 +96,14 @@ Each `.py` module also contains a `__main__` self-test block for standalone vali
 - **KL across layers**: Captures internal inconsistency; stronger signal than entropy alone.
 - **Conservative thresholds**: Bias toward escalating (false positive) over trusting (false negative).
 - **Isotonic over Platt**: No parametric assumptions; Z-score-based confidence isn't sigmoid.
-- **GPT-2**: Public, small, CPU-friendly. Technique generalizes to any transformer with `output_attentions`.
+- **EleutherAI/pythia-160m**: Fully open-source (Apache 2.0), small, CPU-friendly. Technique generalizes to any transformer with `output_attentions`.
 
 ---
 
 ## Extending This Work
 
 - **Domain calibration**: `calibrate_from_corpus()` for model/domain adaptation
-- **Multi-model**: Swap GPT-2 for any HuggingFace model with attention weights
+- **Multi-model**: Swap Pythia for Llama, Mistral, Phi, or any HuggingFace model with attention weights
 - **Streaming**: <5ms latency supports token-by-token monitoring
 - **Ensemble**: Combine with output probability, embedding similarity, RAG verification
 
@@ -114,3 +116,4 @@ Each `.py` module also contains a `__main__` self-test block for standalone vali
 - Zadrozny & Elkan (2002). *Transforming Classifier Scores into Accurate Multiclass Probability Estimates*
 - Vaswani et al. (2017). *Attention Is All You Need*
 - Xiao & Wang (2021). *On Hallucination and Predictive Uncertainty in Conditional Language Generation*
+- Biderman et al. (2023). *Pythia: A Suite for Analyzing Large Language Models Across Training and Scaling*

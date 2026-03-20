@@ -2,11 +2,14 @@
 
 Two implementations of LLM hallucination detection via attention analysis.
 
+Uses **open-source models** (EleutherAI Pythia, Llama, Mistral) and **Anthropic Claude** for labeling. No OpenAI models or APIs.
+
 | | v1 | v2 |
 |---|---|---|
 | **Approach** | Statistical hypothesis test | Trained classifier |
 | **Features** | Entropy + KL divergence | 5 feature families (18D) |
-| **Labels** | Hand-tuned baseline | LLM-as-judge |
+| **Default model** | EleutherAI/pythia-160m | EleutherAI/pythia-160m |
+| **Labels** | Hand-tuned baseline | Claude as LLM-as-judge |
 | **Folder** | [`v1/`](v1/README.md) | [`v2/`](v2/README.md) |
 
 ---

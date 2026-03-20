@@ -18,7 +18,7 @@ Usage:
     generator.save(dataset, "data/train.jsonl")
 
 References:
-    - Chuang et al. (2024) "Lookback Lens" — used GPT-4o as judge
+    - Chuang et al. (2024) "Lookback Lens" — used an LLM-as-judge approach
     - Qi et al. (2026) "Frequency-Aware Attention" — QA-based evaluation
 """
 
@@ -222,7 +222,7 @@ class DataGenerator:
     @staticmethod
     def get_model_answers(
         qa_pairs: List[QAPair],
-        model_name: str = "gpt2",
+        model_name: str = "EleutherAI/pythia-160m",
         max_new_tokens: int = 100,
         device: str = "cpu",
     ) -> List[str]:
@@ -286,9 +286,8 @@ class DataGenerator:
         """
         Use Claude as LLM-as-judge to label each (question, answer) pair.
 
-        Following Lookback Lens: "We employed GPT-4o to verify the truthfulness
-        of these responses and provide span-level annotations on hallucinated
-        segments... confirming a 97% consistency rate with human annotation."
+        Following Lookback Lens's LLM-as-judge approach, which confirmed
+        a 97% consistency rate with human annotation.
         """
         samples: List[LabeledSample] = []
 
@@ -346,7 +345,7 @@ class DataGenerator:
         self,
         num_samples: int = 100,
         domains: Optional[List[str]] = None,
-        local_model: str = "gpt2",
+        local_model: str = "EleutherAI/pythia-160m",
         device: str = "cpu",
     ) -> List[LabeledSample]:
         """
@@ -465,7 +464,7 @@ if __name__ == "__main__":
         label="correct",
         domain="geography",
         difficulty="easy",
-        model_name="gpt2",
+        model_name="EleutherAI/pythia-160m",
     )
     assert sample.sample_id  # auto-generated
     assert len(sample.sample_id) == 12
