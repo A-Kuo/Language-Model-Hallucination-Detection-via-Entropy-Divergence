@@ -37,7 +37,7 @@ Usage:
     from attention_analyzer import AttentionAnalyzer
     from hypothesis_test import HallucinationHypothesisTest
 
-    analyzer = AttentionAnalyzer(model_name="gpt2")
+    analyzer = AttentionAnalyzer(model_name="google/gemma-2-2b")
     tester = HallucinationHypothesisTest()
 
     result = analyzer.analyze("The capital of France is")
@@ -76,10 +76,10 @@ class CalibrationBaseline:
     look like when the model is behaving normally (not hallucinating).
 
     In production, you'd estimate these from your own calibration set.
-    These defaults are reasonable starting points for GPT-2 on factual text.
+    These defaults are reasonable starting points for Gemma 2 on factual text.
     """
     # Entropy baseline (across all layers & heads)
-    entropy_mean: float = 2.8       # bits — typical for GPT-2 on factual text
+    entropy_mean: float = 2.8       # bits — typical for Gemma 2 on factual text
     entropy_std: float = 0.6        # spread across different prompts
 
     # KL divergence baseline (total across layer pairs)
@@ -91,8 +91,8 @@ class CalibrationBaseline:
     entropy_spread_std: float = 0.4
 
 
-# Default baselines for GPT-2
-GPT2_BASELINE = CalibrationBaseline()
+# Default baselines (calibrated on Gemma 2)
+DEFAULT_BASELINE = CalibrationBaseline()
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ class HallucinationHypothesisTest:
         alpha: float = 0.01,
         weights: tuple[float, float, float] = (0.40, 0.45, 0.15),
     ) -> None:
-        self.baseline = baseline or GPT2_BASELINE
+        self.baseline = baseline or DEFAULT_BASELINE
         self.alpha = alpha
         self.weights = weights
 

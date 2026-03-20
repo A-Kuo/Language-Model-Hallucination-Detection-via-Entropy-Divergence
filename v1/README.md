@@ -58,7 +58,7 @@ pip install -r requirements.txt
 pytest test_attention_analyzer.py -v
 ```
 
-*For full demo (GPT-2 forward pass), see `v1/claude1.md` for module details and extension points.*
+*For full demo (Gemma 2 forward pass), see `v1/claude1.md` for module details and extension points.*
 
 ---
 

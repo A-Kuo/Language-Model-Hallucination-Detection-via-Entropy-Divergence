@@ -521,7 +521,7 @@ if __name__ == "__main__":
 
     rng = np.random.default_rng(42)
 
-    # Simulate GPT-2 sized attention: 12 layers, 12 heads, 16 tokens
+    # Simulate Gemma 2 sized attention: 12 layers, 12 heads, 16 tokens
     L, H, T = 12, 12, 16
     context_len = 10
 

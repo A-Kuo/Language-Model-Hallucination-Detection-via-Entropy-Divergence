@@ -53,7 +53,7 @@ confidence < 0.50  →  UNRELIABLE (reject)
 
 ### `attention_analyzer.py`
 
-- Loads GPT-2, runs forward pass with `output_attentions=True`
+- Loads Gemma 2 (or any HuggingFace model), runs forward pass with `output_attentions=True`
 - **Layer-head entropy matrix** `(L, H)`: Shannon entropy of last token's attention row per head
 - **Cross-layer KL**: pairwise KL between consecutive layers' averaged attention
 - Standalone `compute_entropy_from_weights()` and `compute_kl_divergence()` work with raw numpy — no model needed
@@ -94,14 +94,14 @@ Each `.py` module also contains a `__main__` self-test block for standalone vali
 - **KL across layers**: Captures internal inconsistency; stronger signal than entropy alone.
 - **Conservative thresholds**: Bias toward escalating (false positive) over trusting (false negative).
 - **Isotonic over Platt**: No parametric assumptions; Z-score-based confidence isn't sigmoid.
-- **GPT-2**: Public, small, CPU-friendly. Technique generalizes to any transformer with `output_attentions`.
+- **Gemma 2**: Public, compact (2B), GPU/CPU-friendly. Technique generalizes to any transformer with `output_attentions`.
 
 ---
 
 ## Extending This Work
 
 - **Domain calibration**: `calibrate_from_corpus()` for model/domain adaptation
-- **Multi-model**: Swap GPT-2 for any HuggingFace model with attention weights
+- **Multi-model**: Swap Gemma 2 for any HuggingFace model with attention weights
 - **Streaming**: <5ms latency supports token-by-token monitoring
 - **Ensemble**: Combine with output probability, embedding similarity, RAG verification
 

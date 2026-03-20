@@ -254,7 +254,7 @@ def main():
     parser.add_argument("--synthetic", action="store_true", help="Run on synthetic data")
     parser.add_argument("--num_samples", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--model", type=str, default="gpt2", help="HuggingFace model")
+    parser.add_argument("--model", type=str, default="google/gemma-2-2b", help="HuggingFace model")
     parser.add_argument("--data", type=str, help="Path to labeled JSONL data")
     parser.add_argument("--save", type=str, help="Save detector to this path")
     parser.add_argument("--load", type=str, help="Load pre-trained detector")

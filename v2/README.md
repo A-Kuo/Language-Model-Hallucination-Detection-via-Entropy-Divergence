@@ -10,7 +10,7 @@ Scaled successor to v1. v2 eliminates hand-tuned baselines by training a lightwe
 
 | | v1 | v2 |
 |---|---|---|
-| **Model** | GPT-2 only | Any HuggingFace model |
+| **Model** | Gemma 2 (default) | Any HuggingFace model |
 | **Features** | 2 families (entropy, KL) | 5 families (+ lookback, frequency, spectral) |
 | **Labels** | Hand-tuned Z-test | LLM-as-judge on self-generated QA |
 | **Classifier** | Hypothesis test | Logistic regression / MLP |
@@ -38,7 +38,7 @@ python -c "import sys; sys.path.insert(0,'v2'); exec(open('v2/pipeline.py').read
 cd v2 && python pipeline.py --synthetic --num_samples 1000
 
 # Full pipeline (requires ANTHROPIC_API_KEY)
-python v2/pipeline.py --data data/train.jsonl --model gpt2 --save detector.pkl
+python v2/pipeline.py --data data/train.jsonl --model google/gemma-2-2b --save detector.pkl
 ```
 
 ---

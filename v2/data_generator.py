@@ -222,7 +222,7 @@ class DataGenerator:
     @staticmethod
     def get_model_answers(
         qa_pairs: List[QAPair],
-        model_name: str = "gpt2",
+        model_name: str = "google/gemma-2-2b",
         max_new_tokens: int = 100,
         device: str = "cpu",
     ) -> List[str]:
@@ -346,7 +346,7 @@ class DataGenerator:
         self,
         num_samples: int = 100,
         domains: Optional[List[str]] = None,
-        local_model: str = "gpt2",
+        local_model: str = "google/gemma-2-2b",
         device: str = "cpu",
     ) -> List[LabeledSample]:
         """
@@ -465,7 +465,7 @@ if __name__ == "__main__":
         label="correct",
         domain="geography",
         difficulty="easy",
-        model_name="gpt2",
+        model_name="google/gemma-2-2b",
     )
     assert sample.sample_id  # auto-generated
     assert len(sample.sample_id) == 12
