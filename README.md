@@ -2,6 +2,8 @@
 
 Two implementations of LLM hallucination detection via attention analysis.
 
+*Sync local ↔ GitHub:* see [`SYNC.md`](SYNC.md).
+
 Uses **open-source models** (EleutherAI Pythia, Llama, Mistral) and **Anthropic Claude** for labeling. No OpenAI models or APIs.
 
 | | v1 | v2 |
