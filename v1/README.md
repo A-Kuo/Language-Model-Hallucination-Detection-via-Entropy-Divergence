@@ -60,7 +60,7 @@ pytest test_attention_analyzer.py -v
 
 Default model is [EleutherAI/pythia-160m](https://huggingface.co/EleutherAI/pythia-160m) — small, CPU-friendly, fully open-source. Any HuggingFace model with `output_attentions` support works.
 
-*See `v1/claude1.md` for module details and extension points.*
+*See [`v1/AGENT.md`](AGENT.md) for module details and extension points.*
 
 ---
 
@@ -76,11 +76,11 @@ v1/
 ├── requirements.txt
 ├── Dockerfile
 ├── README.md
-└── claude1.md               # Agent instructions
+└── AGENT.md                 # Agent instructions
 ```
 
 ---
 
 ## License
 
-MIT
+[MIT](../LICENSE)

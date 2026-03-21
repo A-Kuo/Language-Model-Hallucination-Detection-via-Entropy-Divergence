@@ -37,7 +37,7 @@ COPY hypothesis_test.py .
 COPY confidence_calibrator.py .
 COPY utils.py .
 COPY README.md .
-COPY claude1.md .
+COPY AGENT.md .
 
 RUN useradd --create-home appuser
 USER appuser

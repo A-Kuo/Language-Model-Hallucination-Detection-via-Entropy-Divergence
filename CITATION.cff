@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Natural Hallucination Analysis"
+abstract: >-
+  Two implementations of LLM hallucination detection via attention pattern
+  analysis. v1 uses Shannon entropy and cross-layer KL divergence with a
+  statistical hypothesis test. v2 extends to five feature families
+  (entropy, lookback ratio, frequency domain, spectral Laplacian, KL)
+  with a trained classifier and self-labeled data pipeline.
+authors:
+  - family-names: "Kuo"
+    given-names: "A"
+license: MIT
+repository-code: "https://github.com/A-Kuo/Natural-Hallucination-Analysis"
+keywords:
+  - hallucination detection
+  - attention analysis
+  - LLM safety
+  - transformer interpretability
+  - information theory
+references:
+  - type: article
+    title: "Lookback Lens: Detecting and Mitigating Contextual Hallucinations Using Only Attention Maps"
+    authors:
+      - family-names: "Chuang"
+        given-names: "Y-S"
+    year: 2024
+    conference:
+      name: "EMNLP"
+  - type: article
+    title: "Detecting Contextual Hallucinations in LLMs with Frequency-Aware Attention"
+    authors:
+      - family-names: "Qi"
+    year: 2026
+    doi: "10.48550/arXiv.2602.18145"
+  - type: article
+    title: "Hallucination Detection using Spectral Features of Attention Maps"
+    authors:
+      - family-names: "Barbero"
+    year: 2025
+    doi: "10.48550/arXiv.2502.17598"

@@ -43,6 +43,8 @@ python pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m --save
 
 Default local model is [EleutherAI/pythia-160m](https://huggingface.co/EleutherAI/pythia-160m). For better hallucination rates, use larger models like Llama or Mistral.
 
+*See [`v2/AGENT.md`](AGENT.md) for implementation details, known limitations, and research foundations.*
+
 ---
 
 ## Project Structure
@@ -54,7 +56,7 @@ v2/
 ├── detector.py         # LogReg / MLP classifier
 ├── pipeline.py         # End-to-end orchestration
 ├── README.md
-├── claude2.md          # Agent instructions
+├── AGENT.md            # Agent instructions
 └── requirements.txt
 ```
 
@@ -74,4 +76,4 @@ v2/
 
 ## License
 
-MIT
+[MIT](../LICENSE)
