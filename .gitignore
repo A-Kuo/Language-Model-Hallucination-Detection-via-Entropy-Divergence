@@ -7,6 +7,65 @@ __pycache__/
 .eggs/
 dist/
 build/
+*.egg
+MANIFEST
 
-# Optional: uncomment to ignore VS Code/Cursor workspace file
-# *.code-workspace
+# Secrets and credentials (defense in depth)
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials.json
+token.json
+*.p12
+*.pfx
+
+# API keys and tokens (never commit these)
+*api_key*
+*apikey*
+*api-token*
+*apitoken*
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Model weights and checkpoints (large files)
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.onnx
+models/
+checkpoints/
+
+# Data files (could contain sensitive info)
+*.csv
+data/
+datasets/
+
+# Logs
+*.log
+logs/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
