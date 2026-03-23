@@ -3,6 +3,8 @@
 [![Tests](https://github.com/A-Kuo/Natural-Hallucination-Analysis/actions/workflows/test.yml/badge.svg)](https://github.com/A-Kuo/Natural-Hallucination-Analysis/actions/workflows/test.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![v1 Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Natural-Hallucination-Analysis/blob/main/colab/v1_benchmark.ipynb)
+[![v2 Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Natural-Hallucination-Analysis/blob/main/colab/v2_full_pipeline.ipynb)
 
 **LLM hallucination detection via attention pattern analysis.** Two implementations — a lightweight statistical approach (v1) and a research-grade trained classifier (v2) — built for safety-critical applications.
 
