@@ -26,8 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install numpy scipy pytest
 
-      - name: Run v1 tests (numpy-only)
+      - name: Run v1 pytest tests (numpy-only)
         run: pytest v1/test_attention_analyzer.py -v
+
+      - name: Run v2 pytest tests (numpy-only)
+        run: pytest v2/test_feature_engineer.py v2/test_detector.py -v
 
       - name: Run v1 self-tests
         env:
