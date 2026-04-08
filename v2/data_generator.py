@@ -405,6 +405,88 @@ class DataGenerator:
                 ))
         return pairs
 
+    @staticmethod
+    def from_halueval(
+        num_samples: int = 500,
+        seed: int = 42,
+    ) -> List["LabeledSample"]:
+        """
+        Load pre-labeled hallucination samples from HaluEval (no API required).
+
+        HaluEval (Peng et al., 2023) provides QA pairs where each question has
+        both a correct answer and a hallucinated answer, labeled by GPT-3.5.
+        This gives us balanced, research-validated ground truth with zero API cost.
+
+        Requires: pip install datasets
+
+        Parameters
+        ----------
+        num_samples : int
+            Total samples to return (split evenly: half correct, half hallucinated).
+        seed : int
+            Random seed for shuffling.
+
+        Returns
+        -------
+        List[LabeledSample]  ready for feature extraction, no generation step needed.
+
+        Reference
+        ---------
+        Peng et al. (2023). "HaluEval: A Large-Scale Hallucination Evaluation
+        Benchmark for Large Language Models." EMNLP 2023.
+        https://github.com/RUCAIBox/HaluEval
+        """
+        try:
+            from datasets import load_dataset
+        except ImportError:
+            raise ImportError(
+                "HuggingFace `datasets` required: pip install datasets"
+            )
+
+        import random
+        rng = random.Random(seed)
+
+        print("  Downloading HaluEval QA split from HuggingFace Hub...")
+        ds = load_dataset("pminervini/HaluEval", "qa_samples", split="data")
+        print(f"  Loaded {len(ds)} rows from HaluEval.")
+
+        # Each row has one correct and one hallucinated answer — interleave both
+        rows = list(ds)
+        rng.shuffle(rows)
+
+        half = num_samples // 2
+        samples: List[LabeledSample] = []
+
+        for row in rows[:half]:
+            samples.append(LabeledSample(
+                question=row["question"],
+                ground_truth=row["right_answer"],
+                model_answer=row["hallucinated_answer"],
+                label="hallucinated",
+                domain="knowledge",
+                difficulty="medium",
+                judge_reasoning="HaluEval ground truth",
+                model_name="halueval_gpt3.5",
+            ))
+
+        for row in rows[:half]:
+            samples.append(LabeledSample(
+                question=row["question"],
+                ground_truth=row["right_answer"],
+                model_answer=row["right_answer"],
+                label="correct",
+                domain="knowledge",
+                difficulty="medium",
+                judge_reasoning="HaluEval ground truth",
+                model_name="halueval_gpt3.5",
+            ))
+
+        rng.shuffle(samples)
+        print(f"  HaluEval: {len(samples)} samples "
+              f"({sum(1 for s in samples if s.label == 'hallucinated')} hallucinated, "
+              f"{sum(1 for s in samples if s.label == 'correct')} correct)")
+        return samples
+
     # -----------------------------------------------------------------
     # I/O
     # -----------------------------------------------------------------

@@ -1,6 +1,8 @@
 numpy>=1.20
 scipy>=1.7
-# For full pipeline (model + API):
-# torch
-# transformers
-# anthropic
+# For HaluEval mode (free, no API):
+# pip install datasets
+# For full model pipeline:
+# pip install torch transformers
+# For self-generated data (Anthropic judge):
+# pip install anthropic

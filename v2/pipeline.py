@@ -10,13 +10,16 @@ Orchestrates the full workflow:
 
 Usage:
     # Synthetic demo (no model or API needed)
-    python v2/pipeline.py --synthetic --num_samples 500
+    python v2/pipeline.py --synthetic --num_samples 1000
 
-    # Full pipeline (requires model + API key)
-    python v2/pipeline.py --model EleutherAI/pythia-160m --data data/train.jsonl
+    # HaluEval benchmark (no API — pip install datasets)
+    python v2/pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m
 
-    # Evaluate pre-trained detector
-    python v2/pipeline.py --load detector.pkl --data data/test.jsonl
+    # Full pipeline with self-generated data (requires ANTHROPIC_API_KEY)
+    python v2/pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m
+
+    # Save trained detector
+    python v2/pipeline.py --halueval --num_samples 500 --save detector.pkl
 """
 
 from __future__ import annotations
@@ -249,15 +252,113 @@ def run_synthetic_demo(num_samples: int = 500, seed: int = 42):
     return best
 
 
+def run_real_pipeline(
+    samples,
+    model_name: str = "EleutherAI/pythia-160m",
+    seed: int = 42,
+    save_path: Optional[str] = None,
+) -> None:
+    """
+    Run the full pipeline on pre-labeled LabeledSample objects.
+
+    Used by both --halueval and --data modes. Loads the model once,
+    extracts features for every non-ambiguous sample, trains both
+    classifiers, runs ablation, and optionally saves the detector.
+    """
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Filter ambiguous labels
+    clean = [s for s in samples if s.label != "ambiguous"]
+    print(f"  {len(clean)} non-ambiguous samples (dropped {len(samples) - len(clean)} ambiguous)")
+
+    # Load model once
+    print(f"\nLoading {model_name} on {device}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        output_attentions=True,
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+    ).to(device).eval()
+
+    engineer = AttentionFeatureEngineer(context_length=32)
+
+    # Extract features
+    print(f"\nExtracting features for {len(clean)} samples...")
+    X_list, y_list = [], []
+    failed = 0
+
+    for i, sample in enumerate(clean):
+        try:
+            text = f"Question: {sample.question}\nAnswer: {sample.model_answer}"
+            attentions, context_len = extract_attention_from_model(text, model, tokenizer, device)
+            feats = engineer.extract(attentions, context_len)
+            X_list.append(feats)
+            y_list.append(1.0 if sample.label == "hallucinated" else 0.0)
+        except Exception as e:
+            failed += 1
+            if failed <= 3:
+                print(f"  Warning: sample {i} failed — {e}")
+
+        if (i + 1) % 100 == 0:
+            print(f"  {i + 1}/{len(clean)} processed  (failed: {failed})")
+
+    X = np.array(X_list)
+    y = np.array(y_list)
+    print(f"\nFeature matrix: {X.shape}   failed: {failed}")
+    print(f"Labels: {int(y.sum())} hallucinated / {int((y == 0).sum())} correct")
+
+    # Train / evaluate
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(len(y))
+    X, y = X[idx], y[idx]
+    split = int(0.7 * len(y))
+    X_train, y_train = X[:split], y[:split]
+    X_test, y_test = X[split:], y[split:]
+
+    feature_names = engineer.feature_names
+
+    print(f"\nTraining on {split} / testing on {len(y) - split}...")
+
+    det_lr = HallucinationDetector(classifier_type="logistic", feature_names=feature_names)
+    det_lr.fit(X_train, y_train)
+    m_lr = det_lr.evaluate(X_test, y_test)
+    print_metrics(m_lr, "Logistic Regression")
+
+    det_mlp = HallucinationDetector(classifier_type="mlp", hidden_dim=64, feature_names=feature_names)
+    det_mlp.fit(X_train, y_train)
+    m_mlp = det_mlp.evaluate(X_test, y_test)
+    print_metrics(m_mlp, "MLP")
+
+    # Feature importance
+    importance = det_lr.feature_importance()
+    print(f"\n{'═' * 50}")
+    print(f"  FEATURE IMPORTANCE (Logistic Regression)")
+    print(f"{'═' * 50}")
+    for name, weight in list(importance.items())[:10]:
+        bar = "█" * int(weight * 20)
+        print(f"  {name:<28} {weight:.4f}  {bar}")
+
+    ablation_study(X, y, feature_names)
+
+    if save_path:
+        best = det_mlp if m_mlp.auroc >= m_lr.auroc else det_lr
+        best.save(save_path)
+        print(f"\nDetector saved to {save_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Hallucination Detection Pipeline v2")
-    parser.add_argument("--synthetic", action="store_true", help="Run on synthetic data")
+    parser.add_argument("--synthetic",  action="store_true", help="Run on synthetic data (no model/API)")
+    parser.add_argument("--halueval",   action="store_true", help="Use HaluEval benchmark (no API, needs: pip install datasets)")
     parser.add_argument("--num_samples", type=int, default=500)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--model", type=str, default="EleutherAI/pythia-160m", help="HuggingFace model")
-    parser.add_argument("--data", type=str, help="Path to labeled JSONL data")
-    parser.add_argument("--save", type=str, help="Save detector to this path")
-    parser.add_argument("--load", type=str, help="Load pre-trained detector")
+    parser.add_argument("--seed",       type=int, default=42)
+    parser.add_argument("--model",      type=str, default="EleutherAI/pythia-160m", help="HuggingFace model")
+    parser.add_argument("--data",       type=str, help="Path to labeled JSONL file")
+    parser.add_argument("--save",       type=str, help="Save trained detector to this path")
+    parser.add_argument("--load",       type=str, help="Load pre-trained detector")
 
     args = parser.parse_args()
 
@@ -269,19 +370,39 @@ def main():
     if args.synthetic:
         best = run_synthetic_demo(args.num_samples, args.seed)
         if args.save:
-            # Re-train on full data and save
             X, y = generate_synthetic_dataset(args.num_samples, args.seed)
             det = HallucinationDetector(classifier_type="logistic")
             det.fit(X, y)
             det.save(args.save)
             print(f"\nDetector saved to {args.save}")
+
+    elif args.halueval:
+        from v2.data_generator import DataGenerator
+        print(f"Mode: HaluEval benchmark  (num_samples={args.num_samples}, no API required)")
+        samples = DataGenerator.from_halueval(
+            num_samples=args.num_samples,
+            seed=args.seed,
+        )
+        run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save)
+
+    elif args.data:
+        from v2.data_generator import DataGenerator
+        print(f"Mode: loading data from {args.data}")
+        samples = DataGenerator.load(args.data)
+        print(f"  Loaded {len(samples)} samples")
+        run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save)
+
     else:
-        print("Full pipeline requires --data (labeled JSONL) and --model.")
-        print("Generate data first:")
-        print("  python -c \"from v2.data_generator import DataGenerator; ...")
-        print("  gen = DataGenerator(); dataset = gen.generate(100); gen.save(dataset, 'data/train.jsonl')\"")
-        print("\nOr use synthetic mode:")
-        print("  python v2/pipeline.py --synthetic --num_samples 1000")
+        print("Choose a data source:")
+        print()
+        print("  --synthetic          Fast demo, no model or API needed")
+        print("    python v2/pipeline.py --synthetic --num_samples 1000")
+        print()
+        print("  --halueval           Real benchmark data, no API needed (pip install datasets)")
+        print("    python v2/pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m")
+        print()
+        print("  --data <file.jsonl>  Your own labeled dataset")
+        print("    python v2/pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m")
 
 
 if __name__ == "__main__":
