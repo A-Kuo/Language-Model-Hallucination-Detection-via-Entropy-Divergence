@@ -37,7 +37,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from v2.feature_engineer import AttentionFeatureEngineer, FeatureConfig
-from v2.detector import HallucinationDetector, DetectorMetrics
+from v2.detector import HallucinationDetector, BiLSTMDetector, DetectorMetrics
 
 
 # =========================================================================
@@ -120,6 +120,89 @@ def generate_synthetic_dataset(
 # =========================================================================
 # Evaluation and reporting
 # =========================================================================
+
+def bootstrap_auroc_ci(
+    probs: np.ndarray,
+    labels: np.ndarray,
+    n_boot: int = 1000,
+    ci: float = 0.95,
+    seed: int = 42,
+) -> Tuple[float, float]:
+    """
+    Bootstrap confidence interval for AUROC.
+
+    Resamples (probs, labels) with replacement n_boot times and computes
+    the AUROC distribution. Returns the (lower, upper) percentile bounds.
+    """
+    rng = np.random.default_rng(seed)
+    aurocs = []
+    N = len(labels)
+    for _ in range(n_boot):
+        idx = rng.integers(0, N, size=N)
+        p_b, y_b = probs[idx], labels[idx]
+        if y_b.sum() == 0 or y_b.sum() == N:
+            continue
+        # Mann-Whitney AUROC
+        pos = p_b[y_b == 1]
+        neg = p_b[y_b == 0]
+        auroc = float(np.mean(pos[:, None] > neg[None, :]))
+        aurocs.append(auroc)
+    lo = np.percentile(aurocs, 100 * (1 - ci) / 2)
+    hi = np.percentile(aurocs, 100 * (1 - (1 - ci) / 2))
+    return float(lo), float(hi)
+
+
+def stratified_kfold_cv(
+    X: np.ndarray,
+    y: np.ndarray,
+    k: int = 5,
+    classifier_type: str = "logistic",
+    seed: int = 42,
+) -> Tuple[float, Tuple[float, float]]:
+    """
+    Stratified k-fold cross-validation with bootstrap AUROC CI.
+
+    Maintains class balance across folds (important for imbalanced data).
+    Returns mean AUROC and 95% CI from bootstrap on held-out predictions.
+    """
+    rng = np.random.default_rng(seed)
+
+    # Stratified split: interleave pos/neg samples across folds
+    pos_idx = np.where(y == 1)[0]
+    neg_idx = np.where(y == 0)[0]
+    rng.shuffle(pos_idx)
+    rng.shuffle(neg_idx)
+
+    pos_folds = np.array_split(pos_idx, k)
+    neg_folds = np.array_split(neg_idx, k)
+
+    all_probs  = np.zeros(len(y))
+    all_labels = y.copy()
+
+    for fold in range(k):
+        val_idx   = np.concatenate([pos_folds[fold], neg_folds[fold]])
+        train_idx = np.concatenate([
+            np.concatenate([pos_folds[j] for j in range(k) if j != fold]),
+            np.concatenate([neg_folds[j] for j in range(k) if j != fold]),
+        ])
+
+        X_tr, y_tr = X[train_idx], y[train_idx]
+        X_val       = X[val_idx]
+
+        det = HallucinationDetector(classifier_type=classifier_type)
+        det.fit(X_tr, y_tr)
+        all_probs[val_idx] = det.predict_proba(X_val)
+
+    # AUROC on all out-of-fold predictions
+    from scipy.stats import mannwhitneyu
+    pos_p = all_probs[y == 1]
+    neg_p = all_probs[y == 0]
+    stat, _ = mannwhitneyu(pos_p, neg_p, alternative="greater")
+    mean_auroc = float(stat / (len(pos_p) * len(neg_p)))
+
+    lo, hi = bootstrap_auroc_ci(all_probs, all_labels, seed=seed)
+    return mean_auroc, (lo, hi)
+
 
 def print_metrics(metrics: DetectorMetrics, title: str = "Evaluation Results"):
     """Pretty-print evaluation metrics."""
@@ -310,27 +393,75 @@ def run_real_pipeline(
     print(f"\nFeature matrix: {X.shape}   failed: {failed}")
     print(f"Labels: {int(y.sum())} hallucinated / {int((y == 0).sum())} correct")
 
-    # Train / evaluate
+    # Train / evaluate — stratified k-fold
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(y))
     X, y = X[idx], y[idx]
     split = int(0.7 * len(y))
     X_train, y_train = X[:split], y[:split]
-    X_test, y_test = X[split:], y[split:]
+    X_test, y_test   = X[split:], y[split:]
 
     feature_names = engineer.feature_names
 
+    print(f"\n{'═' * 50}")
+    print(f"  STRATIFIED 5-FOLD CROSS-VALIDATION")
+    print(f"{'═' * 50}")
+
+    lr_cv_auroc, lr_ci = stratified_kfold_cv(X, y, k=5, classifier_type="logistic", seed=seed)
+    print(f"  LogReg — AUROC: {lr_cv_auroc:.4f}  95% CI: [{lr_ci[0]:.4f}, {lr_ci[1]:.4f}]")
+
+    mlp_cv_auroc, mlp_ci = stratified_kfold_cv(X, y, k=5, classifier_type="mlp", seed=seed)
+    print(f"  MLP    — AUROC: {mlp_cv_auroc:.4f}  95% CI: [{mlp_ci[0]:.4f}, {mlp_ci[1]:.4f}]")
+
+    # Final held-out evaluation
     print(f"\nTraining on {split} / testing on {len(y) - split}...")
 
     det_lr = HallucinationDetector(classifier_type="logistic", feature_names=feature_names)
     det_lr.fit(X_train, y_train)
     m_lr = det_lr.evaluate(X_test, y_test)
-    print_metrics(m_lr, "Logistic Regression")
+    print_metrics(m_lr, "Logistic Regression (held-out)")
 
     det_mlp = HallucinationDetector(classifier_type="mlp", hidden_dim=64, feature_names=feature_names)
     det_mlp.fit(X_train, y_train)
     m_mlp = det_mlp.evaluate(X_test, y_test)
-    print_metrics(m_mlp, "MLP")
+    print_metrics(m_mlp, "MLP (held-out)")
+
+    # BiLSTM on per-layer sequences
+    try:
+        import torch
+        print(f"\nExtracting per-layer sequences for BiLSTM...")
+        seq_list = []
+        for sample in clean:
+            try:
+                text = f"Question: {sample.question}\nAnswer: {sample.model_answer}"
+                attentions, ctx_len = extract_attention_from_model(text, model, tokenizer, device)
+                seq = engineer.extract_layer_sequence(attentions)
+                seq_list.append(seq)
+            except Exception:
+                seq_list.append(None)
+
+        valid_mask = [s is not None for s in seq_list]
+        X_seq = np.array([s for s in seq_list if s is not None])
+        y_seq = y[[i for i, v in enumerate(valid_mask) if v]]
+
+        idx_s = rng.permutation(len(y_seq))
+        X_seq, y_seq = X_seq[idx_s], y_seq[idx_s]
+        sp = int(0.7 * len(y_seq))
+
+        bilstm_det = HallucinationDetector(classifier_type="bilstm", hidden_dim=32, epochs=60)
+        bilstm_det.fit_sequence(X_seq[:sp], y_seq[:sp])
+        m_bilstm = bilstm_det.evaluate_sequence(X_seq[sp:], y_seq[sp:])
+        print_metrics(m_bilstm, "BiLSTM (per-layer sequence, held-out)")
+
+        # Bootstrap CI for BiLSTM
+        probs_bilstm = bilstm_det.predict_proba_sequence(X_seq[sp:])
+        bi_lo, bi_hi = bootstrap_auroc_ci(probs_bilstm, y_seq[sp:])
+        print(f"  BiLSTM AUROC 95% CI: [{bi_lo:.4f}, {bi_hi:.4f}]")
+
+    except ImportError:
+        print("\n  BiLSTM skipped — PyTorch not available (pip install torch)")
+        bilstm_det = None
+        m_bilstm = None
 
     # Feature importance
     importance = det_lr.feature_importance()
@@ -344,9 +475,13 @@ def run_real_pipeline(
     ablation_study(X, y, feature_names)
 
     if save_path:
-        best = det_mlp if m_mlp.auroc >= m_lr.auroc else det_lr
-        best.save(save_path)
-        print(f"\nDetector saved to {save_path}")
+        if m_bilstm and bilstm_det:
+            bilstm_det._bilstm.save(save_path)
+            print(f"\nBiLSTM detector saved to {save_path}")
+        else:
+            best = det_mlp if m_mlp.auroc >= m_lr.auroc else det_lr
+            best.save(save_path)
+            print(f"\nDetector saved to {save_path}")
 
 
 def main():

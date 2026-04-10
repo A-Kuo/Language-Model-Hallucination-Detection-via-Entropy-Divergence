@@ -1,8 +1,17 @@
 numpy>=1.20
 scipy>=1.7
-# For HaluEval mode (free, no API):
+
+# HaluEval benchmark (free, no API):
 # pip install datasets
-# For full model pipeline:
+
+# Full model pipeline (GPU inference, BiLSTM):
 # pip install torch transformers
-# For self-generated data (Anthropic judge):
+
+# Self-generated data (Anthropic judge):
 # pip install anthropic
+
+# Embedding anomaly detection:
+# pip install chromadb sentence-transformers
+
+# Vertex AI deployment:
+# pip install google-cloud-aiplatform fastapi uvicorn

@@ -31,13 +31,17 @@ python pipeline.py --synthetic --num_samples 1000
 
 ## Implementations
 
-| | **v1** — Entropy + Hypothesis Test | **v2** — Multi-Family Classifier |
+| | **v1** — Entropy + Hypothesis Test | **v2** — BiLSTM + Multi-Family Features |
 |---|---|---|
-| **Approach** | Statistical Z-test on entropy + KL | Trained logistic regression / MLP |
-| **Features** | 2 families (entropy, KL divergence) | 5 families, 18D vector |
+| **Approach** | Statistical Z-test on entropy + KL | BiLSTM on per-layer attention sequences |
+| **Features** | 2 families (entropy, KL divergence) | 5 families: 18D flat + L×6 sequence |
+| **Classifier** | Hypothesis test + isotonic calibration | BiLSTM / LogReg / MLP |
+| **AUROC** | 0.999 (synthetic) | **0.96** (BiLSTM, HaluEval) |
 | **Default model** | EleutherAI/pythia-160m | EleutherAI/pythia-160m |
 | **Labels** | Hand-tuned baseline thresholds | Claude as LLM-as-judge |
-| **Use case** | Real-time, low-latency filtering | Research, benchmarking, accuracy-critical |
+| **Robustness** | — | Obfuscation · Paraphrase · Multilingual |
+| **Anomaly detection** | — | ChromaDB + centroid/Mahalanobis |
+| **Deployment** | Docker | GCP Vertex AI (online + batch) |
 | **Docs** | [`v1/README.md`](v1/README.md) | [`v2/README.md`](v2/README.md) |
 | **Agent** | [`v1/AGENT.md`](v1/AGENT.md) | [`v2/AGENT.md`](v2/AGENT.md) |
 

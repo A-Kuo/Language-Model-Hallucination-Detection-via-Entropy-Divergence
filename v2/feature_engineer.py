@@ -485,6 +485,97 @@ class AttentionFeatureEngineer:
         """Extract and return only the concatenated feature vector."""
         return self.extract_all(attentions)["combined"]
 
+    # Alias used by pipeline.py
+    def extract(
+        self,
+        attentions: Union[tuple, np.ndarray],
+        context_len: int = 0,
+    ) -> np.ndarray:
+        """Convenience alias for extract_vector with optional context override."""
+        if context_len > 0:
+            self.context_length = context_len
+            self.config.lookback = True
+        return self.extract_vector(attentions)
+
+    def extract_layer_sequence(
+        self,
+        attentions: Union[tuple, np.ndarray],
+    ) -> np.ndarray:
+        """
+        Extract a per-layer feature sequence for BiLSTM input.
+
+        Unlike extract_vector (which collapses all layers into global summary
+        stats), this preserves the layer dimension so a BiLSTM can learn which
+        layers are most informative for hallucination detection.
+
+        Architecture motivation:
+            Early layers capture syntactic grounding; later layers capture
+            semantic confidence. A BiLSTM reading the sequence forward
+            (syntactic → semantic) and backward (semantic → syntactic) captures
+            cross-layer dynamics invisible to a flat feature vector.
+
+        Parameters
+        ----------
+        attentions : tuple or np.ndarray, shape (L, H, T, T)
+
+        Returns
+        -------
+        np.ndarray, shape (L, 6)
+            Per-layer features:
+              [0] mean_entropy   — mean Shannon entropy across heads
+              [1] max_entropy    — max entropy across heads
+              [2] entropy_std    — std of entropy across heads
+              [3] lookback_mean  — mean lookback ratio across heads (0 if no ctx)
+              [4] kl_to_next     — KL divergence to next layer (0 for last layer)
+              [5] highfreq_mean  — mean high-frequency DFT energy across heads
+        """
+        a = self._to_numpy(attentions)   # (L, H, T, T)
+        L, H, T, _ = a.shape
+        q = self.config.query_idx        # typically -1 (last token)
+
+        seq = np.zeros((L, 6), dtype=np.float64)
+
+        for l in range(L):
+            attn_l = np.clip(a[l, :, q, :], EPS, None)  # (H, T)
+            attn_l = attn_l / attn_l.sum(axis=-1, keepdims=True)
+
+            # Entropy features
+            h_l = -np.sum(attn_l * np.log2(attn_l), axis=-1)  # (H,)
+            seq[l, 0] = h_l.mean()
+            seq[l, 1] = h_l.max()
+            seq[l, 2] = h_l.std()
+
+            # Lookback ratio (context grounding)
+            if self.context_length > 0 and T > self.context_length:
+                ctx = int(self.context_length)
+                lb = attn_l[:, :ctx].sum(axis=-1)  # (H,)
+                seq[l, 3] = lb.mean()
+            else:
+                seq[l, 3] = 0.5  # neutral if no context info
+
+            # KL divergence to next layer
+            if l < L - 1:
+                attn_next = np.clip(a[l + 1, :, q, :], EPS, None)
+                attn_next = attn_next / attn_next.sum(axis=-1, keepdims=True)
+                kl_per_head = np.sum(
+                    attn_l * np.log(attn_l / attn_next), axis=-1
+                )  # (H,)
+                seq[l, 4] = float(np.maximum(kl_per_head, 0).mean())
+            # last layer: kl_to_next stays 0
+
+            # High-frequency DFT energy
+            fft_vals = np.abs(np.fft.fft(attn_l, axis=-1))  # (H, T)
+            half = T // 2
+            high_energy = (fft_vals[:, half:] ** 2).mean(axis=-1)  # (H,)
+            seq[l, 5] = high_energy.mean()
+
+        return seq
+
+    @property
+    def layer_sequence_dim(self) -> int:
+        """Feature dimension per layer in extract_layer_sequence output."""
+        return 6
+
     @staticmethod
     def _to_numpy(attentions: Union[tuple, np.ndarray]) -> np.ndarray:
         """
