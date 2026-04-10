@@ -30,6 +30,7 @@ token.json
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.code-workspace
 *.sublime-project
 *.sublime-workspace
