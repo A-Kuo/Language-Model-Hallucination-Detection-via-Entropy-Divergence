@@ -14,7 +14,7 @@ Usage:
   python v1/run_experiment.py --mode quick
   python v1/run_experiment.py --mode full --model EleutherAI/pythia-160m
 
-The JSON output matches the \RESULT{} placeholders in arxiv-paper/paper.tex.
+The JSON output matches the RESULT{} placeholders in arxiv-paper/paper.tex.
 Run on Colab with GPU for publication-quality numbers.
 """
 
@@ -39,22 +39,62 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 QUICK_PAIRS: List[Tuple[str, str, int]] = [
     # (context, continuation, label)  label=1 → hallucination
+    # --- Geography ---
     ("The Eiffel Tower is located in", "Paris, France.", 0),
-    ("The capital of Australia is", "Wellington, New Zealand.", 1),
-    ("Water boils at 100 degrees", "Celsius at sea level.", 0),
-    ("Albert Einstein won the Nobel Prize in", "Literature in 1921.", 1),
-    ("The speed of light is approximately", "300,000 kilometres per second.", 0),
-    ("Shakespeare wrote the play", "Hamlet in the 19th century.", 1),
+    ("The Eiffel Tower is located in", "Berlin, Germany.", 1),
+    ("The capital of Australia is", "Canberra.", 0),
+    ("The capital of Australia is", "Sydney, the largest city.", 1),
+    ("The Amazon River flows through", "South America, primarily Brazil.", 0),
+    ("The Amazon River flows through", "Central Africa and the Congo Basin.", 1),
+    ("The Pacific Ocean is the", "largest and deepest ocean on Earth.", 0),
+    ("The Pacific Ocean is the", "smallest of the world's five oceans.", 1),
+    ("Mount Everest is located in the", "Himalayas on the Nepal-Tibet border.", 0),
+    ("Mount Everest is located in the", "Alps mountain range in Switzerland.", 1),
+    ("The Nile River is located in", "northeastern Africa.", 0),
+    ("The Nile River is located in", "western Europe near the Rhine.", 1),
+    # --- Science ---
+    ("Water boils at", "100 degrees Celsius at sea level.", 0),
+    ("Water boils at", "212 degrees Fahrenheit, which equals 100 Kelvin.", 1),
+    ("The speed of light is approximately", "300,000 kilometres per second in a vacuum.", 0),
+    ("The speed of light is approximately", "the same as the speed of sound.", 1),
     ("DNA stands for", "Deoxyribonucleic Acid.", 0),
-    ("The Great Wall of China was built by", "the French government.", 1),
+    ("DNA stands for", "Dynamic Nucleic Assembly.", 1),
     ("The human body has", "206 bones in adults.", 0),
-    ("Python programming language was created by", "Guido van Rossum.", 0),
-    ("The Moon orbits the Earth every", "24 hours exactly.", 1),
-    ("The Amazon River is located in", "South America.", 0),
-    ("Penicillin was discovered by", "Marie Curie.", 1),
-    ("The Pacific Ocean is the", "largest ocean on Earth.", 0),
-    ("Mount Everest is located in the", "Alps mountain range.", 1),
+    ("The human body has", "over 500 bones throughout adult life.", 1),
     ("The human heart has", "four chambers.", 0),
+    ("The human heart has", "two chambers: one for blood in, one for blood out.", 1),
+    ("Photosynthesis converts", "sunlight, water, and CO2 into glucose and oxygen.", 0),
+    ("Photosynthesis converts", "oxygen and nitrogen into carbon and water.", 1),
+    # --- History ---
+    ("Albert Einstein won the Nobel Prize in", "Physics in 1921 for the photoelectric effect.", 0),
+    ("Albert Einstein won the Nobel Prize in", "Mathematics for his theory of relativity.", 1),
+    ("Shakespeare wrote the play", "Hamlet, one of the most famous tragedies in English.", 0),
+    ("Shakespeare wrote the play", "Hamlet in the 19th century during the Victorian era.", 1),
+    ("The Great Wall of China was built by", "various Chinese dynasties over many centuries.", 0),
+    ("The Great Wall of China was built by", "the Roman Empire to defend against China.", 1),
+    ("Penicillin was discovered by", "Alexander Fleming in 1928.", 0),
+    ("Penicillin was discovered by", "Marie Curie during her radioactivity research.", 1),
+    ("The Moon orbits the Earth approximately every", "27 to 29 days depending on frame of reference.", 0),
+    ("The Moon orbits the Earth approximately every", "24 hours, matching the Earth's rotation.", 1),
+    # --- Technology ---
+    ("Python programming language was created by", "Guido van Rossum in the late 1980s.", 0),
+    ("Python programming language was created by", "Linus Torvalds as an alternative to C.", 1),
+    ("The internet was originally developed by", "DARPA as ARPANET in the 1960s.", 0),
+    ("The internet was originally developed by", "Tim Berners-Lee at CERN in 1989.", 1),
+    ("The first iPhone was released by Apple in", "2007, revolutionizing the smartphone market.", 0),
+    ("The first iPhone was released by Apple in", "1999 before the iPod was introduced.", 1),
+    # --- Medicine ---
+    ("The normal human body temperature is approximately", "37 degrees Celsius or 98.6 degrees Fahrenheit.", 0),
+    ("The normal human body temperature is approximately", "42 degrees Celsius, the same as a mild fever.", 1),
+    ("Insulin is produced by", "the pancreas and regulates blood sugar levels.", 0),
+    ("Insulin is produced by", "the liver as part of the digestive process.", 1),
+    ("Aspirin is chemically known as", "acetylsalicylic acid.", 0),
+    ("Aspirin is chemically known as", "acetaminophen, the same as Tylenol.", 1),
+    # --- Mathematics ---
+    ("The value of pi is approximately", "3.14159, the ratio of a circle's circumference to its diameter.", 0),
+    ("The value of pi is approximately", "2.71828, the base of the natural logarithm.", 1),
+    ("Pythagoras' theorem states that", "a² + b² = c² for a right-angled triangle.", 0),
+    ("Pythagoras' theorem states that", "the sum of all angles in any triangle equals 360 degrees.", 1),
 ]
 
 
@@ -202,7 +242,9 @@ def auroc(y_true: np.ndarray, y_score: np.ndarray) -> float:
     fp = np.cumsum(1 - y_sorted)
     tp_rate = tp / tp[-1]
     fp_rate = fp / fp[-1]
-    return float(np.trapz(tp_rate, fp_rate))
+    # np.trapezoid is the current name (np.trapz removed in NumPy 2.0)
+    trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    return float(trapz(tp_rate, fp_rate))
 
 
 def fpr_at_tpr(y_true: np.ndarray, y_score: np.ndarray, tpr_threshold: float = 0.90) -> float:

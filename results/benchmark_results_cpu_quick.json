@@ -1,0 +1,15 @@
+{
+  "mode": "quick",
+  "model_name": "gpt2",
+  "num_samples": 50,
+  "num_layers": 12,
+  "num_heads": 12,
+  "device": "cpu",
+  "aed_auroc": 0.52,
+  "aed_fpr90": 0.6,
+  "aed_latency_ms": 46.9,
+  "logreg_auroc": 0.64,
+  "logreg_fpr90": 0.6,
+  "timestamp": "2026-04-10T21:39:33.276622Z",
+  "notes": "Run on cpu(CPU)"
+}
