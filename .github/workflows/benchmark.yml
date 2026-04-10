@@ -1,0 +1,84 @@
+name: Quick Benchmark (CPU)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'v1/**'
+      - '.github/workflows/benchmark.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Benchmark mode'
+        required: false
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+
+# Only run one benchmark at a time; cancel in-progress on new push
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: AED quick benchmark (CPU / GPT-2 / synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-gpt2-${{ runner.os }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch transformers numpy
+
+      - name: Run AED quick benchmark
+        env:
+          TOKENIZERS_PARALLELISM: "false"
+        run: |
+          python v1/run_experiment.py \
+            --mode quick \
+            --model gpt2 \
+            --output results/benchmark_results.json
+
+      - name: Show results
+        run: |
+          echo "=== Benchmark Results ==="
+          cat results/benchmark_results.json
+
+      - name: Upload benchmark results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: results/benchmark_results.json
+          retention-days: 90
+
+      - name: Check AUROC meets minimum threshold
+        run: |
+          python - <<'EOF'
+          import json, sys
+          with open("results/benchmark_results.json") as f:
+              r = json.load(f)
+          auroc = r["aed_auroc"]
+          # Quick/CPU/synthetic threshold — lower than GPU/HaluEval
+          min_auroc = 0.50
+          print(f"AED AUROC: {auroc:.4f} (threshold: >{min_auroc})")
+          if auroc < min_auroc:
+              print("FAIL: AUROC below minimum — pipeline may be broken")
+              sys.exit(1)
+          print("PASS")
+          EOF
