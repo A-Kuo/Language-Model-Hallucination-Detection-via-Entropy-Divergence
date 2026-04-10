@@ -46,6 +46,21 @@ This relationship is grounded in information theory: Shannon entropy H(p) = -Σ 
 
 ---
 
+## Quick Start — Run in Colab
+
+The fastest way to get paper-quality results (no local setup required):
+
+| Notebook | Purpose | Runtime | Badge |
+|----------|---------|---------|-------|
+| **[GPU Benchmark](COLABS.md)** | Generate paper numbers (AUROC, FPR, latency) | ~15 min T4 GPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/gpu_benchmark.ipynb) |
+| **[Ablation Study](COLABS.md)** | Fill Table 2 (entropy-only vs KL-only vs both) | ~8 min T4 GPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/ablation_study.ipynb) |
+| **[Quick Validation](COLABS.md)** | Test pipeline on CPU (GPT-2, synthetic data) | ~3 min CPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/quick_cpu_validation.ipynb) |
+
+**Auto-commit:** Add `GH_TOKEN` to Colab Secrets → results push directly to repo  
+**See all:** [COLABS.md](COLABS.md) — full index with detailed instructions
+
+---
+
 ## Mathematical Approach
 
 ### Token-Level Entropy
