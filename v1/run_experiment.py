@@ -107,17 +107,42 @@ def load_halueval_qa(max_samples: int = 500) -> List[Tuple[str, str, int]]:
     try:
         from datasets import load_dataset
         ds = load_dataset("pminervini/HaluEval", "qa_samples", split="data")
+        cols = ds.column_names
+        print(f"      HaluEval columns: {cols}")
+
+        # Map to actual column names — HuggingFace versions vary
+        _pick = lambda candidates: next((c for c in candidates if c in cols), None)
+        q_col = _pick(["question", "input", "prompt", "query", "src"])
+        r_col = _pick(["right_answer", "answer", "output", "response",
+                       "correct_answer", "chosen", "tgt"])
+        h_col = _pick(["hallucinated_answer", "hallucinated_response",
+                       "wrong_answer", "rejected", "hallucination"])
+
+        if not q_col or not r_col or not h_col:
+            raise ValueError(
+                f"Expected question/right/hallucinated columns; got: {cols}\n"
+                f"  question col: {q_col}, right col: {r_col}, halluc col: {h_col}"
+            )
+        print(f"      Mapped: question={q_col!r}  right={r_col!r}  hallucinated={h_col!r}")
+
         pairs = []
         for row in ds:
             if len(pairs) >= max_samples:
                 break
-            question = row.get("question", "")
-            right = row.get("right_answer", "")
-            hallucinated = row.get("hallucinated_answer", "")
+            question    = str(row[q_col]) if row[q_col] is not None else ""
+            right       = str(row[r_col]) if row[r_col] is not None else ""
+            hallucinated = str(row[h_col]) if row[h_col] is not None else ""
             if question and right:
                 pairs.append((question, right, 0))
             if question and hallucinated and len(pairs) < max_samples:
                 pairs.append((question, hallucinated, 1))
+
+        if not pairs:
+            raise ValueError(
+                f"Dataset loaded {len(ds)} rows but produced 0 usable pairs.\n"
+                f"Sample row: {dict(list(ds[0].items())[:4])}\n"
+                "The column values may all be None or empty."
+            )
         return pairs
     except Exception as e:
         print(f"[WARN] Could not load HaluEval: {e}")
@@ -345,6 +370,12 @@ def run(args: argparse.Namespace) -> ExperimentResults:
             elapsed = time.time() - t_start
             print(f"      {i+1}/{len(pairs)} done  ({elapsed/(i+1)*1000:.0f}ms/sample)")
     t_extract = time.time() - t_start
+
+    if not features:
+        raise RuntimeError(
+            "0 samples extracted — dataset returned no usable pairs.\n"
+            "Check the HaluEval column inspection output above."
+        )
 
     X = np.array(features)       # (N, num_layers * 2)
     y = np.array(labels)
