@@ -226,6 +226,36 @@ This preserves the \emph{ordering} of layers, enabling sequence models
 to learn how uncertainty evolves from early (syntactic) to late (semantic) 
 transformer layers.
 
+\subsection{Algorithm}
+
+Algorithm~\ref{alg:aed} gives a complete specification of AED feature extraction.
+
+\begin{algorithm}[h]
+\caption{AED Feature Extraction}
+\label{alg:aed}
+\begin{algorithmic}[1]
+\Require Transformer $\mathcal{M}$ with $L$ layers and $H$ heads,
+         input sequence $\mathbf{x} = (x_1, \ldots, x_T)$
+\Ensure Feature vector $\mathbf{f} \in \mathbb{R}^{2L}$
+\State Run $\mathcal{M}(\mathbf{x})$ with \texttt{output\_attentions=True}
+\State Collect $\{\mathbf{A}^{l,h}\}_{l=1}^{L}$, \quad shape each: $T \times T$
+\For{$l = 1$ \textbf{to} $L$}
+  \For{$h = 1$ \textbf{to} $H$}
+    \State $\mathbf{a}^{l,h} \leftarrow \mathbf{A}^{l,h}_{T,:}$ \Comment{Last-token attention row}
+    \State $H_{l,h} \leftarrow -\sum_j a^{l,h}_j \log_2 a^{l,h}_j$
+  \EndFor
+  \State $\bar{H}^l \leftarrow \frac{1}{H}\sum_{h=1}^{H} H_{l,h}$ \Comment{Mean entropy at layer $l$}
+  \State $\bar{\mathbf{a}}^l \leftarrow \frac{1}{H}\sum_{h=1}^{H} \mathbf{a}^{l,h}$ \Comment{Mean attn distribution}
+  \If{$l > 1$}
+    \State $D^l \leftarrow D_{\text{KL}}(\bar{\mathbf{a}}^{l-1} \| \bar{\mathbf{a}}^l)$
+  \Else
+    \State $D^l \leftarrow 0$
+  \EndIf
+\EndFor
+\State \Return $\mathbf{f} = (\bar{H}^1, \ldots, \bar{H}^L, D^1, \ldots, D^L)$
+\end{algorithmic}
+\end{algorithm}
+
 \subsection{Classification}
 
 \paragraph{Logistic Regression (baseline):}
