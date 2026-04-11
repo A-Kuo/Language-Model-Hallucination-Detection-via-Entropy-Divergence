@@ -29,12 +29,13 @@
 
 **Actual results (April 2026):**
 ```
-AED BiLSTM AUROC:    0.7808
-AED BiLSTM F1:       0.8264
-AED FPR@90%TPR:      0.38
+AED BiLSTM AUROC:      0.7808
+AED BiLSTM F1:         0.8264
+AED FPR@90%TPR:        0.38
 LogReg Baseline AUROC: 0.9068
-LogReg Baseline F1:  0.8148
-Latency:             38.49 ms/sample
+LogReg Baseline F1:    0.8148
+LogReg FPR@90%TPR:     0.30
+Latency:               38.49 ms/sample
 ```
 
 ---
