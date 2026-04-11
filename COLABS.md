@@ -27,11 +27,14 @@
 - Runtime → Change runtime type → T4 GPU
 - Secrets (🔑) → Add `GH_TOKEN` with `repo` scope for auto-commit
 
-**Paper integration:**
+**Actual results (April 2026):**
 ```
-Cell 5 outputs: \RESULT{0.962} ← AED BiLSTM AUROC
-                \RESULT{0.843} ← LogReg baseline AUROC
-                47.2 ms        ← Latency per sample
+AED BiLSTM AUROC:    0.7808
+AED BiLSTM F1:       0.8264
+AED FPR@90%TPR:      0.38
+LogReg Baseline AUROC: 0.9068
+LogReg Baseline F1:  0.8148
+Latency:             38.49 ms/sample
 ```
 
 ---
@@ -48,13 +51,14 @@ Cell 5 outputs: \RESULT{0.962} ← AED BiLSTM AUROC
 - KL-only (no entropy)
 - Both combined (full AED)
 
-**Paper table:**
-```latex
-\midrule
-Entropy only    & \RESULT{?} & \RESULT{?} \\
-KL only         & \RESULT{?} & \RESULT{?} \\
-Both (full AED) & \RESULT{0.962} & -- \\
+**Actual results (April 2026):**
 ```
+Entropy only    AUROC=0.8225  FPR@90%TPR=0.30
+KL only         AUROC=0.5400  FPR@90%TPR=0.60
+Both (full AED) AUROC=0.8300  FPR@90%TPR=0.30
+```
+Entropy is the dominant signal. KL divergence alone is near-random.
+Full AED marginally outperforms entropy-only.
 
 ---
 
@@ -99,10 +103,10 @@ Both (full AED) & \RESULT{0.962} & -- \\
 After running, results are stored in the repo at:
 ```
 results/
-├── benchmark_results.json          ← Main numbers
-├── ablation_results.json           ← Ablation table
+├── benchmark_results.json          ← Main numbers (AUROC, F1, FPR, latency)
+├── ablation_results.json           ← Ablation table (entropy vs KL vs both)
 ├── figure_layer_entropy.png        ← Paper Figure 1
-└── figure_kl_divergence.png        ← Paper Figure 2
+└── figure_ablation_comparison.png  ← Ablation bar charts
 ```
 
 Download link: https://github.com/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/tree/main/results

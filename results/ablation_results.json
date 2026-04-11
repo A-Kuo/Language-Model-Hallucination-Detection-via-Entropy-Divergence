@@ -1,0 +1,14 @@
+{
+  "Entropy only": {
+    "auroc": 0.8225,
+    "fpr90": 0.3
+  },
+  "KL only": {
+    "auroc": 0.54,
+    "fpr90": 0.6
+  },
+  "Both (full AED)": {
+    "auroc": 0.83,
+    "fpr90": 0.3
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "model_name": "EleutherAI/pythia-160m",
+  "num_samples": 500,
+  "num_layers": 12,
+  "device": "cuda",
+  "aed_auroc": 0.7808,
+  "aed_f1": 0.8264,
+  "aed_fpr90": 0.38,
+  "aed_latency_ms": 38.49,
+  "logreg_auroc": 0.9068,
+  "logreg_f1": 0.8148,
+  "logreg_fpr90": 0.3
+}
