@@ -75,6 +75,32 @@ Full AED marginally outperforms entropy-only.
 
 ---
 
+## Advanced Notebooks
+
+### 🌍 Multi-Provider Benchmark — Compare Across LLM APIs
+
+**Purpose:** Validate detector performance across different LLM providers (OpenAI, HuggingFace, Anthropic)  
+**Runtime:** ~20 minutes on T4 GPU (includes API calls with rate limiting)  
+**Requirements:** API keys for providers to test (see [RESEARCH.md § 6.3](../RESEARCH.md#63-api-keys--setup))
+
+**What it does:**
+1. Loads HaluEval benchmark (100-500 samples)
+2. Generates answers from each provider using their API
+3. Extracts attention features from local model (Pythia-160m)
+4. Runs detector on each provider's answers
+5. Compares AUROC, confidence intervals, and API costs
+
+**Output:** `results/api_benchmark_[date].json` with provider comparison table
+
+**Expected results:**
+- AUROC: 0.90-0.96 across providers (detector generalizes)
+- Cost comparison: Shows cost per provider for benchmarking
+- Latency: Breakdown of model inference vs API call time
+
+**Notebook location:** `colab/multi_provider_benchmark.ipynb` (when created)
+
+---
+
 ## How to Use
 
 ### For Paper Results

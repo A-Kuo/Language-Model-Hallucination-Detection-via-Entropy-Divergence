@@ -61,6 +61,39 @@ The fastest way to get paper-quality results (no local setup required):
 
 ---
 
+## Professional Research Document
+
+For a comprehensive academic treatment suitable for research statements, publications, and portfolio presentations, see **[RESEARCH.md](RESEARCH.md)**.
+
+Includes:
+- Detailed mathematical foundations (information theory, proof of bounds)
+- Five-family feature engineering methodology
+- Experimental results with confidence intervals and ablation studies
+- Robustness evaluation against adversarial attacks
+- Reproducibility instructions and API setup
+- Comparison with related work
+
+---
+
+## Multi-Provider API Testing
+
+Compare hallucination detection performance across different LLM providers (OpenAI, HuggingFace, Anthropic) using the new API testing framework:
+
+```bash
+cd v2/
+python api_testing.py \
+  --providers anthropic openai huggingface \
+  --dataset halueval \
+  --samples 100 \
+  --output results/api_benchmark.json
+```
+
+Generates comparison table with AUROC, confidence intervals, and API costs per provider.
+
+See [RESEARCH.md § 6.2](RESEARCH.md#62-running-benchmarks) for complete API setup instructions.
+
+---
+
 ## Mathematical Approach
 
 ### Token-Level Entropy
