@@ -6,8 +6,6 @@ Scaled successor to v1. v2 eliminates hand-tuned baselines by training a lightwe
 
 ---
 
-## What Changed from v1
-
 | | v1 | v2 |
 |---|---|---|
 | **Model** | GPT-2 only | Any HuggingFace model |
