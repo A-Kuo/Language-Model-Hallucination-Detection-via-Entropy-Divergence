@@ -30,7 +30,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -38,6 +38,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from v2.feature_engineer import AttentionFeatureEngineer, FeatureConfig
 from v2.detector import HallucinationDetector, BiLSTMDetector, DetectorMetrics
+from v2.entropy_baselines import EntropyFeatureExtractor
+from v2.calibrated_entropy_detector import CalibratedEntropyDetector
+from v2.blackbox_detector import BlackBoxEntropyDetector, simulate_topk_from_full_logits, extract_blackbox_features
 
 
 # =========================================================================
@@ -72,6 +75,60 @@ def extract_attention_from_model(
         attn_list.append(layer_attn[0].detach().cpu().numpy())
 
     return np.stack(attn_list), context_length
+
+
+def extract_logits_from_model(
+    text: str,
+    model,
+    tokenizer,
+    device: str = "cpu",
+    prompt: Optional[str] = None,
+) -> Tuple[np.ndarray, np.ndarray, int]:
+    """
+    Run a teacher-forcing forward pass and extract next-token logits.
+
+    Parameters
+    ----------
+    text : str
+        Full text (prompt + answer) to run through the model.
+    prompt : str, optional
+        The prompt-only prefix (e.g. "Question: ...\\nAnswer:"). If given,
+        it is tokenized separately to compute `answer_start` precisely.
+        If omitted, `answer_start` is 0 (caller treats the whole sequence
+        as the span of interest).
+
+    Returns
+    -------
+    logits : np.ndarray, shape (T, V)
+        logits[t] is the model's predictive distribution for the token at
+        position t+1 (teacher forcing) — i.e. already shifted/aligned with
+        `token_ids`.
+    token_ids : np.ndarray, shape (T,)
+        The actually-realized token id that logits[t] should have predicted.
+    answer_start : int
+        Index into `logits`/`token_ids` where the answer span begins (0 if
+        `prompt` not given).
+    """
+    import torch
+
+    inputs = tokenizer(text, return_tensors="pt").to(device)
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    raw_logits = outputs.logits[0].detach().cpu().numpy()      # (T_full, V)
+    input_ids = inputs["input_ids"][0].detach().cpu().numpy()  # (T_full,)
+
+    logits = raw_logits[:-1]      # logits[t] predicts input_ids[t+1]
+    token_ids = input_ids[1:]
+
+    answer_start = 0
+    if prompt is not None:
+        prompt_inputs = tokenizer(prompt, return_tensors="pt")
+        prompt_len = prompt_inputs["input_ids"].shape[1]
+        answer_start = max(prompt_len - 1, 0)
+
+    return logits, token_ids, answer_start
 
 
 # =========================================================================
@@ -158,12 +215,24 @@ def stratified_kfold_cv(
     k: int = 5,
     classifier_type: str = "logistic",
     seed: int = 42,
+    detector_factory: Optional[Callable[[], Any]] = None,
 ) -> Tuple[float, Tuple[float, float]]:
     """
     Stratified k-fold cross-validation with bootstrap AUROC CI.
 
     Maintains class balance across folds (important for imbalanced data).
     Returns mean AUROC and 95% CI from bootstrap on held-out predictions.
+
+    Parameters
+    ----------
+    classifier_type : str
+        Used to build a HallucinationDetector when `detector_factory` is
+        not given (existing behavior, unchanged).
+    detector_factory : Callable[[], Any], optional
+        If given, called once per fold to build a fresh detector exposing
+        fit(X, y)/predict_proba(X) — lets CalibratedEntropyDetector,
+        BlackBoxEntropyDetector, etc. run through this same CV/bootstrap
+        harness without special-casing.
     """
     rng = np.random.default_rng(seed)
 
@@ -189,7 +258,8 @@ def stratified_kfold_cv(
         X_tr, y_tr = X[train_idx], y[train_idx]
         X_val       = X[val_idx]
 
-        det = HallucinationDetector(classifier_type=classifier_type)
+        det = detector_factory() if detector_factory is not None \
+            else HallucinationDetector(classifier_type=classifier_type)
         det.fit(X_tr, y_tr)
         all_probs[val_idx] = det.predict_proba(X_val)
 
@@ -219,18 +289,34 @@ def print_metrics(metrics: DetectorMetrics, title: str = "Evaluation Results"):
     print(f"{'═' * 50}")
 
 
-def ablation_study(X: np.ndarray, y: np.ndarray, feature_names: List[str]):
+DEFAULT_ABLATION_FAMILIES: Dict[str, slice] = {
+    "entropy": slice(0, 3),
+    "lookback": slice(3, 7),
+    "frequency": slice(7, 11),
+    "spectral": slice(11, 15),
+    "cross_layer_kl": slice(15, 18),
+}
+
+
+def ablation_study(
+    X: np.ndarray,
+    y: np.ndarray,
+    feature_names: List[str],
+    families: Optional[Dict[str, slice]] = None,
+):
     """
     Feature family ablation: train with each family removed to measure
     its contribution.
+
+    Parameters
+    ----------
+    families : Dict[str, slice], optional
+        Maps family name -> column slice within X. Defaults to the 5
+        attention families (DEFAULT_ABLATION_FAMILIES); pass an extended
+        dict (e.g. adding "entropy_token": slice(18, 24)) once X has been
+        concatenated with additional feature blocks.
     """
-    families = {
-        "entropy": slice(0, 3),
-        "lookback": slice(3, 7),
-        "frequency": slice(7, 11),
-        "spectral": slice(11, 15),
-        "cross_layer_kl": slice(15, 18),
-    }
+    families = families if families is not None else DEFAULT_ABLATION_FAMILIES
 
     N = len(y)
     split = int(0.7 * N)
@@ -243,7 +329,7 @@ def ablation_study(X: np.ndarray, y: np.ndarray, feature_names: List[str]):
     print(f"\n{'═' * 50}")
     print(f"  FEATURE FAMILY ABLATION")
     print(f"{'═' * 50}")
-    print(f"  Full model (18 features): AUROC = {full_auroc:.4f}")
+    print(f"  Full model ({X.shape[1]} features): AUROC = {full_auroc:.4f}")
     print(f"  {'─' * 46}")
 
     for family, s in families.items():
@@ -367,18 +453,35 @@ def run_real_pipeline(
     ).to(device).eval()
 
     engineer = AttentionFeatureEngineer(context_length=32)
+    entropy_extractor = EntropyFeatureExtractor()
 
-    # Extract features
+    # Extract features: attention families, token-entropy baselines, and
+    # black-box top-K features (the latter simulated from the same logits
+    # computed for entropy features — no extra forward pass needed).
     print(f"\nExtracting features for {len(clean)} samples...")
-    X_list, y_list = [], []
+    X_attn_list, X_entropy_list, X_blackbox_list, y_list = [], [], [], []
     failed = 0
 
     for i, sample in enumerate(clean):
         try:
-            text = f"Question: {sample.question}\nAnswer: {sample.model_answer}"
+            prompt = f"Question: {sample.question}\nAnswer:"
+            text = f"{prompt} {sample.model_answer}"
+
             attentions, context_len = extract_attention_from_model(text, model, tokenizer, device)
-            feats = engineer.extract(attentions, context_len)
-            X_list.append(feats)
+            attn_feats = engineer.extract(attentions, context_len)
+
+            logits, token_ids, answer_start = extract_logits_from_model(
+                text, model, tokenizer, device, prompt=prompt
+            )
+            entropy_feats = entropy_extractor.extract(logits, answer_start=answer_start, target_ids=token_ids)
+            topk_seq = simulate_topk_from_full_logits(
+                logits[answer_start:], token_ids[answer_start:], top_k=5
+            )
+            blackbox_feats = extract_blackbox_features(topk_seq)
+
+            X_attn_list.append(attn_feats)
+            X_entropy_list.append(entropy_feats)
+            X_blackbox_list.append(blackbox_feats)
             y_list.append(1.0 if sample.label == "hallucinated" else 0.0)
         except Exception as e:
             failed += 1
@@ -388,30 +491,45 @@ def run_real_pipeline(
         if (i + 1) % 100 == 0:
             print(f"  {i + 1}/{len(clean)} processed  (failed: {failed})")
 
-    X = np.array(X_list)
+    X_attn = np.array(X_attn_list)
+    X_entropy = np.array(X_entropy_list)
+    X_blackbox = np.array(X_blackbox_list)
+    X = np.hstack([X_attn, X_entropy])
     y = np.array(y_list)
-    print(f"\nFeature matrix: {X.shape}   failed: {failed}")
+    print(f"\nFeature matrix: {X.shape} (attention {X_attn.shape[1]} + entropy {X_entropy.shape[1]})   failed: {failed}")
     print(f"Labels: {int(y.sum())} hallucinated / {int((y == 0).sum())} correct")
 
     # Train / evaluate — stratified k-fold
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(y))
-    X, y = X[idx], y[idx]
+    X, y, X_blackbox = X[idx], y[idx], X_blackbox[idx]
     split = int(0.7 * len(y))
     X_train, y_train = X[:split], y[:split]
     X_test, y_test   = X[split:], y[split:]
 
-    feature_names = engineer.feature_names
+    feature_names = engineer.feature_names + entropy_extractor.feature_names
+    ablation_families = dict(DEFAULT_ABLATION_FAMILIES)
+    ablation_families["entropy_token"] = slice(X_attn.shape[1], X_attn.shape[1] + X_entropy.shape[1])
 
     print(f"\n{'═' * 50}")
     print(f"  STRATIFIED 5-FOLD CROSS-VALIDATION")
     print(f"{'═' * 50}")
 
     lr_cv_auroc, lr_ci = stratified_kfold_cv(X, y, k=5, classifier_type="logistic", seed=seed)
-    print(f"  LogReg — AUROC: {lr_cv_auroc:.4f}  95% CI: [{lr_ci[0]:.4f}, {lr_ci[1]:.4f}]")
+    print(f"  LogReg          — AUROC: {lr_cv_auroc:.4f}  95% CI: [{lr_ci[0]:.4f}, {lr_ci[1]:.4f}]")
 
     mlp_cv_auroc, mlp_ci = stratified_kfold_cv(X, y, k=5, classifier_type="mlp", seed=seed)
-    print(f"  MLP    — AUROC: {mlp_cv_auroc:.4f}  95% CI: [{mlp_ci[0]:.4f}, {mlp_ci[1]:.4f}]")
+    print(f"  MLP             — AUROC: {mlp_cv_auroc:.4f}  95% CI: [{mlp_ci[0]:.4f}, {mlp_ci[1]:.4f}]")
+
+    calib_cv_auroc, calib_ci = stratified_kfold_cv(
+        X, y, k=5, seed=seed, detector_factory=lambda: CalibratedEntropyDetector()
+    )
+    print(f"  CalibratedEntropy — AUROC: {calib_cv_auroc:.4f}  95% CI: [{calib_ci[0]:.4f}, {calib_ci[1]:.4f}]")
+
+    bb_cv_auroc, bb_ci = stratified_kfold_cv(
+        X_blackbox, y, k=5, seed=seed, detector_factory=lambda: BlackBoxEntropyDetector()
+    )
+    print(f"  BlackBoxTopK    — AUROC: {bb_cv_auroc:.4f}  95% CI: [{bb_ci[0]:.4f}, {bb_ci[1]:.4f}]")
 
     # Final held-out evaluation
     print(f"\nTraining on {split} / testing on {len(y) - split}...")
@@ -472,7 +590,7 @@ def run_real_pipeline(
         bar = "█" * int(weight * 20)
         print(f"  {name:<28} {weight:.4f}  {bar}")
 
-    ablation_study(X, y, feature_names)
+    ablation_study(X, y, feature_names, families=ablation_families)
 
     if save_path:
         if m_bilstm and bilstm_det:
@@ -494,6 +612,8 @@ def main():
     parser.add_argument("--data",       type=str, help="Path to labeled JSONL file")
     parser.add_argument("--save",       type=str, help="Save trained detector to this path")
     parser.add_argument("--load",       type=str, help="Load pre-trained detector")
+    parser.add_argument("--abstention", action="store_true",
+                         help="Also run the abstention/selective-prediction experiment (see v2/abstention.py)")
 
     args = parser.parse_args()
 
@@ -511,6 +631,23 @@ def main():
             det.save(args.save)
             print(f"\nDetector saved to {args.save}")
 
+        if args.abstention:
+            from v2.abstention import run_abstention_experiment, save_risk_coverage_table
+            X, y = generate_synthetic_dataset(args.num_samples, args.seed)
+            result = run_abstention_experiment(
+                X, y, detector_factory=lambda: HallucinationDetector(classifier_type="logistic"),
+                seed=args.seed,
+            )
+            print(f"\n{'═' * 50}")
+            print(f"  ABSTENTION / SELECTIVE PREDICTION")
+            print(f"{'═' * 50}")
+            print(f"  AURC:                          {result['aurc']:.4f}")
+            print(f"  Baseline accuracy (100% cov.): {result['baseline_accuracy']:.4f}")
+            print(f"  Accuracy @ {result['headline_coverage']:.0%} coverage:      {result['headline_accuracy']:.4f}")
+            print(f"  Gain from abstention:          {result['headline_gain']:+.4f}")
+            save_risk_coverage_table(result["points"], "v2/results/abstention_risk_coverage.csv")
+            print(f"  Risk-coverage table saved to v2/results/abstention_risk_coverage.csv")
+
     elif args.halueval:
         from v2.data_generator import DataGenerator
         print(f"Mode: HaluEval benchmark  (num_samples={args.num_samples}, no API required)")
@@ -519,6 +656,9 @@ def main():
             seed=args.seed,
         )
         run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save)
+        if args.abstention:
+            print("\nFor an abstention/selective-prediction experiment on HaluEval data, run:")
+            print(f"  python v2/abstention.py --halueval --num_samples {args.num_samples} --model {args.model}")
 
     elif args.data:
         from v2.data_generator import DataGenerator

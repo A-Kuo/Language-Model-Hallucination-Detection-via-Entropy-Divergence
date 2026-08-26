@@ -5,20 +5,30 @@ Hallucination Detector — Classifiers
 Trains a binary classifier on multi-family attention features.
 
 We implement three classifiers:
-    1. Logistic Regression — interpretable, like Lookback Lens baseline
+    1. Logistic Regression — interpretable, primary/strongest baseline
+       (Lookback Lens style); ~0.91 AUROC on HaluEval with Pythia-160m
     2. Two-layer MLP — captures nonlinear feature interactions
-    3. BiLSTM — operates on per-layer feature sequences; best AUROC
+    3. BiLSTM — operates on per-layer feature sequences; currently
+       underperforms logistic regression (~0.78 AUROC) on HaluEval —
+       included for the per-layer-sequence ablation, not as the
+       recommended production classifier
 
-The BiLSTM (primary classifier) reads the sequence of per-layer attention
-features bidirectionally. Forward pass: early layers → late layers (syntactic
-to semantic). Backward pass: late → early. The concatenated final hidden
-states feed a binary output head.
-
-On HaluEval with Pythia-160m: BiLSTM achieves ~0.96 AUROC vs ~0.84 for
-logistic regression, because cross-layer dynamics are better captured by
-sequence modelling than by global summary statistics.
+LogReg reads the flat 18D summary-statistic vector; BiLSTM reads the raw
+per-layer sequence bidirectionally (forward: early → late layers, backward:
+late → early), on the hypothesis that cross-layer dynamics matter more than
+global summary stats. On HaluEval with Pythia-160m this hypothesis has not
+yet paid off empirically: LogReg achieves ~0.91 AUROC vs ~0.78 for the
+current simplified BiLSTM (see paper.tex and COLABS.md for full numbers).
+Use classifier_type="logistic" as the default/primary choice unless doing
+sequence-model research.
 
 Usage:
+    detector = HallucinationDetector(classifier_type="logistic")
+    detector.fit(X_train, y_train)                 # X: (N, 18)
+    predictions = detector.predict(X_test)
+    metrics = detector.evaluate(X_test, y_test)
+
+    # Sequence-model research (BiLSTM):
     detector = HallucinationDetector(classifier_type="bilstm")
     detector.fit_sequence(X_seq_train, y_train)   # X_seq: (N, L, 6)
     predictions = detector.predict_sequence(X_seq_test)
@@ -400,17 +410,88 @@ class DetectorMetrics:
     threshold: float = 0.5
 
 
+def compute_auroc(probs: np.ndarray, labels: np.ndarray) -> float:
+    """Compute AUROC via trapezoidal integration of the ROC curve."""
+    sorted_idx = np.argsort(-probs)
+    sorted_labels = labels[sorted_idx]
+
+    n_pos = labels.sum()
+    n_neg = len(labels) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return 0.5
+
+    tpr_list = [0.0]
+    fpr_list = [0.0]
+    tp = fp = 0
+
+    for lab in sorted_labels:
+        if lab == 1:
+            tp += 1
+        else:
+            fp += 1
+        tpr_list.append(tp / n_pos)
+        fpr_list.append(fp / n_neg)
+
+    _trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+    return float(_trapz(tpr_list, fpr_list))
+
+
+def compute_classification_metrics(
+    probs: np.ndarray, y: np.ndarray, threshold: float = 0.5
+) -> DetectorMetrics:
+    """
+    Compute the full DetectorMetrics (confusion-matrix stats + AUROC) from
+    predicted probabilities and true labels.
+
+    Shared by HallucinationDetector.evaluate()/evaluate_sequence() and any
+    other detector (e.g. CalibratedEntropyDetector, BlackBoxEntropyDetector)
+    that wants to expose the same evaluate() contract without duplicating
+    this block.
+    """
+    preds = (probs >= threshold).astype(int)
+
+    tp = int(((preds == 1) & (y == 1)).sum())
+    fp = int(((preds == 1) & (y == 0)).sum())
+    tn = int(((preds == 0) & (y == 0)).sum())
+    fn = int(((preds == 0) & (y == 1)).sum())
+
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-10)
+    fpr = fp / max(fp + tn, 1)
+    accuracy = (tp + tn) / max(tp + tn + fp + fn, 1)
+
+    auroc = compute_auroc(probs, y)
+
+    return DetectorMetrics(
+        auroc=auroc,
+        accuracy=accuracy,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        false_positive_rate=fpr,
+        num_samples=len(y),
+        threshold=threshold,
+    )
+
+
 class HallucinationDetector:
     """
     Hallucination detector: trains on multi-family attention features.
 
     Supports three classifier types:
-        "logistic" — interpretable baseline (Lookback Lens style)
+        "logistic" — interpretable, primary/strongest baseline
+                     (Lookback Lens style), ~0.91 AUROC on HaluEval
         "mlp"      — two-layer MLP for nonlinear interactions
-        "bilstm"   — BiLSTM on per-layer sequences (best AUROC, ~0.96)
+        "bilstm"   — BiLSTM on per-layer sequences; currently ~0.78 AUROC,
+                     underperforms logistic on HaluEval — kept for
+                     sequence-model research/ablation, not recommended
+                     as the default production classifier
 
     For BiLSTM, use fit_sequence() / predict_sequence() / evaluate_sequence()
     which accept (N, L, 6) tensors from feature_engineer.extract_layer_sequence().
+    Calling the flat fit()/predict_proba()/evaluate() on a bilstm-typed
+    detector raises ValueError (the flat API has no model to fit for bilstm).
     """
 
     def __init__(
@@ -434,6 +515,12 @@ class HallucinationDetector:
 
         self._fitted = False
 
+    _FLAT_UNSUPPORTED_MSG = (
+        "classifier_type='bilstm' does not support {method}(). BiLSTM operates "
+        "on (N, L, 6) per-layer sequences, not the flat (N, D) feature vector — "
+        "use {alt}() instead (see feature_engineer.extract_layer_sequence())."
+    )
+
     def fit(self, X: np.ndarray, y: np.ndarray) -> HallucinationDetector:
         """
         Train the detector.
@@ -445,6 +532,9 @@ class HallucinationDetector:
         y : np.ndarray, shape (N,)
             Binary labels: 1 = hallucinated, 0 = correct.
         """
+        if self.classifier_type == "bilstm":
+            raise ValueError(self._FLAT_UNSUPPORTED_MSG.format(method="fit", alt="fit_sequence"))
+
         # Standardise features
         self._mean = X.mean(axis=0)
         self._std = X.std(axis=0) + 1e-8
@@ -456,6 +546,9 @@ class HallucinationDetector:
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """Return P(hallucination) for each sample."""
+        if self.classifier_type == "bilstm":
+            raise ValueError(self._FLAT_UNSUPPORTED_MSG.format(
+                method="predict_proba", alt="predict_proba_sequence"))
         assert self._fitted, "Must call fit() first"
         X_norm = (X - self._mean) / self._std
         return self.model.predict_proba(X_norm)
@@ -465,33 +558,11 @@ class HallucinationDetector:
 
     def evaluate(self, X: np.ndarray, y: np.ndarray, threshold: float = 0.5) -> DetectorMetrics:
         """Compute all evaluation metrics."""
+        if self.classifier_type == "bilstm":
+            raise ValueError(self._FLAT_UNSUPPORTED_MSG.format(
+                method="evaluate", alt="evaluate_sequence"))
         probs = self.predict_proba(X)
-        preds = (probs >= threshold).astype(int)
-
-        tp = int(((preds == 1) & (y == 1)).sum())
-        fp = int(((preds == 1) & (y == 0)).sum())
-        tn = int(((preds == 0) & (y == 0)).sum())
-        fn = int(((preds == 0) & (y == 1)).sum())
-
-        precision = tp / max(tp + fp, 1)
-        recall = tp / max(tp + fn, 1)
-        f1 = 2 * precision * recall / max(precision + recall, 1e-10)
-        fpr = fp / max(fp + tn, 1)
-        accuracy = (tp + tn) / max(tp + tn + fp + fn, 1)
-
-        # AUROC
-        auroc = self._compute_auroc(probs, y)
-
-        return DetectorMetrics(
-            auroc=auroc,
-            accuracy=accuracy,
-            precision=precision,
-            recall=recall,
-            f1=f1,
-            false_positive_rate=fpr,
-            num_samples=len(y),
-            threshold=threshold,
-        )
+        return compute_classification_metrics(probs, y, threshold)
 
     # ------------------------------------------------------------------
     # BiLSTM interface (per-layer sequences)
@@ -507,8 +578,11 @@ class HallucinationDetector:
             Output of AttentionFeatureEngineer.extract_layer_sequence().
         y : np.ndarray, shape (N,) — 1=hallucinated, 0=correct
         """
-        assert self.classifier_type == "bilstm", \
-            "fit_sequence() only for classifier_type='bilstm'"
+        if self.classifier_type != "bilstm":
+            raise ValueError(
+                f"fit_sequence() only supports classifier_type='bilstm', "
+                f"got {self.classifier_type!r}. Use fit() for logistic/mlp."
+            )
         self._bilstm.fit(X_seq, y)
         self._fitted = True
         return self
@@ -524,25 +598,7 @@ class HallucinationDetector:
     ) -> DetectorMetrics:
         """Evaluate BiLSTM on per-layer sequences."""
         probs = self._bilstm.predict_proba(X_seq)
-        preds = (probs >= threshold).astype(int)
-
-        tp = int(((preds == 1) & (y == 1)).sum())
-        fp = int(((preds == 1) & (y == 0)).sum())
-        tn = int(((preds == 0) & (y == 0)).sum())
-        fn = int(((preds == 0) & (y == 1)).sum())
-
-        precision = tp / max(tp + fp, 1)
-        recall    = tp / max(tp + fn, 1)
-        f1        = 2 * precision * recall / max(precision + recall, 1e-10)
-        fpr       = fp / max(fp + tn, 1)
-        accuracy  = (tp + tn) / max(tp + tn + fp + fn, 1)
-        auroc     = self._compute_auroc(probs, y)
-
-        return DetectorMetrics(
-            auroc=auroc, accuracy=accuracy, precision=precision,
-            recall=recall, f1=f1, false_positive_rate=fpr,
-            num_samples=len(y), threshold=threshold,
-        )
+        return compute_classification_metrics(probs, y, threshold)
 
     def feature_importance(self) -> Dict[str, float]:
         """
@@ -561,29 +617,8 @@ class HallucinationDetector:
 
     @staticmethod
     def _compute_auroc(probs: np.ndarray, labels: np.ndarray) -> float:
-        """Compute AUROC via trapezoidal integration."""
-        sorted_idx = np.argsort(-probs)
-        sorted_labels = labels[sorted_idx]
-
-        n_pos = labels.sum()
-        n_neg = len(labels) - n_pos
-        if n_pos == 0 or n_neg == 0:
-            return 0.5
-
-        tpr_list = [0.0]
-        fpr_list = [0.0]
-        tp = fp = 0
-
-        for lab in sorted_labels:
-            if lab == 1:
-                tp += 1
-            else:
-                fp += 1
-            tpr_list.append(tp / n_pos)
-            fpr_list.append(fp / n_neg)
-
-        _trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz")
-        return float(_trapz(tpr_list, fpr_list))
+        """Compute AUROC via trapezoidal integration (delegates to module-level compute_auroc)."""
+        return compute_auroc(probs, labels)
 
     # -----------------------------------------------------------------
     # Persistence

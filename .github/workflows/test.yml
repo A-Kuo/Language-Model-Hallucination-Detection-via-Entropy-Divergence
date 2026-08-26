@@ -36,6 +36,9 @@ jobs:
           python v1/hypothesis_test.py
           python v1/confidence_calibrator.py
 
+      - name: Run v2 pytest suite (numpy/scipy-only; torch/openai tests skip cleanly)
+        run: pytest v2/tests -v
+
       - name: Run v2 self-tests
         env:
           PYTHONIOENCODING: utf-8
@@ -43,8 +46,15 @@ jobs:
           python v2/feature_engineer.py
           python v2/detector.py
           python v2/data_generator.py
+          python v2/entropy_baselines.py
+          python v2/calibrated_entropy_detector.py
+          python v2/blackbox_detector.py
+          python v2/adversarial.py
 
       - name: Run v2 synthetic pipeline
         env:
           PYTHONIOENCODING: utf-8
-        run: python v2/pipeline.py --synthetic --num_samples 200
+        run: |
+          python v2/pipeline.py --synthetic --num_samples 200
+          python v2/pipeline.py --synthetic --num_samples 200 --abstention
+          python v2/abstention.py --synthetic --num_samples 500

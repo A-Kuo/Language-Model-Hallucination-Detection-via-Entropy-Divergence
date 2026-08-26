@@ -219,6 +219,11 @@ class AdversarialEvaluator:
             )
             if self.use_sequence:
                 seq = self.engineer.extract_layer_sequence(attentions)
+                # HallucinationDetector(classifier_type="bilstm") exposes
+                # predict_proba_sequence(); a raw BiLSTMDetector's own
+                # predict_proba() already accepts sequences natively.
+                if hasattr(self.detector, "predict_proba_sequence"):
+                    return float(self.detector.predict_proba_sequence(seq[None])[0])
                 return float(self.detector.predict_proba(seq[None])[0])
             else:
                 feats = self.engineer.extract(attentions, ctx_len)
