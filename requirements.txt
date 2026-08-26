@@ -24,3 +24,6 @@ pytest>=7.0.0,<9.1
 
 # Vertex AI deployment:
 # pip install google-cloud-aiplatform fastapi uvicorn
+
+# Kaggle GPU notebook CI (push/poll/pull loop, see notebooks/README.md):
+# pip install kaggle

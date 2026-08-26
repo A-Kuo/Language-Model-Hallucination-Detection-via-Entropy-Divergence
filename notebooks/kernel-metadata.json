@@ -1,7 +1,7 @@
 {
-  "id": "your-kaggle-username/my-pytorch-test",
-  "title": "My PyTorch Test",
-  "code_file": "notebooks/train_eval.ipynb",
+  "id": "augustinekuo/pytorch-dl-testbed",
+  "title": "PyTorch DL Testbed",
+  "code_file": "pytorch_dl_testbed.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": "true",

@@ -46,6 +46,9 @@ api = [
 dev = [
     "pytest>=7.0.0",
 ]
+ci = [
+    "kaggle>=1.6.0",
+]
 all = [
     "hallucination-detection[model,api,dev]",
 ]

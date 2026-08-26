@@ -1,42 +1,71 @@
-name: Run Kaggle GPU Test & Retrieve Artifacts
+name: Kaggle GPU Run
 
+# Manual trigger ONLY. GPU kernel runs cost quota and time — this must never
+# fire automatically on push. Run it from the Actions tab ("Run workflow")
+# or `gh workflow run kaggle_runner.yml` when you deliberately want a run.
 on:
-  push:
-    paths:
-      - 'notebooks/**'
-      - 'src/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 jobs:
   kaggle-run:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Run Notebook on Kaggle GPU
-        uses: KevKibe/kaggle-script-action@v1
+      - uses: actions/setup-python@v5
         with:
-          username: ${{ secrets.KAGGLE_USERNAME }}
-          key: ${{ secrets.KAGGLE_KEY }}
-          title: "My PyTorch Test"
-          custom_script: |
-            import os
-            os.system("jupyter nbconvert --to notebook --execute notebooks/train_eval.ipynb --output output.ipynb")
-          enable_gpu: true
+          python-version: "3.11"
 
-      - name: Download Kaggle Output
+      - name: Install Kaggle CLI
+        run: pip install kaggle
+
+      - name: Push kernel to Kaggle
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: kaggle kernels push -p notebooks/
+
+      - name: Poll for completion
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          pip install kaggle
-          mkdir -p notebooks/results
-          kaggle kernels output your-kaggle-username/my-pytorch-test -p notebooks/results/
+          SLUG=$(python -c "import json; print(json.load(open('notebooks/kernel-metadata.json'))['id'])")
+          echo "Polling kernel: $SLUG"
+          for i in $(seq 1 60); do
+            OUTPUT=$(kaggle kernels status "$SLUG")
+            echo "  [$i] $OUTPUT"
+            if echo "$OUTPUT" | grep -qi "complete"; then
+              echo "Kernel finished."
+              exit 0
+            fi
+            if echo "$OUTPUT" | grep -qiE "error|cancel"; then
+              echo "Kernel failed."
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for kernel to finish."
+          exit 1
 
-      - name: Commit Results to Repo
+      - name: Pull kernel output
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          SLUG=$(python -c "import json; print(json.load(open('notebooks/kernel-metadata.json'))['id'])")
+          mkdir -p notebooks/results
+          kaggle kernels output "$SLUG" -p notebooks/results/
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add notebooks/results/
-          git commit -m "Automated update: GPU evaluation results [skip ci]" || exit 0
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: Kaggle GPU run results"
           git push
