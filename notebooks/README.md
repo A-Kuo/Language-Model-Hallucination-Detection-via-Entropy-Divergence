@@ -12,7 +12,7 @@
 
 What happens when you trigger it:
 1. GitHub Actions pushes `pytorch_dl_testbed.ipynb` to Kaggle as a kernel (using `notebooks/kernel-metadata.json` for configuration) and starts it running on a GPU.
-2. The workflow polls Kaggle every 30s until the kernel finishes (or times out after 30 minutes).
+2. The workflow polls Kaggle every 30s until the kernel finishes (or times out after 85 minutes — the full-scale experiment sweep can take a while on GPU).
 3. Once complete, it downloads the kernel's output files into `notebooks/results/`.
 4. It commits `notebooks/results/` back into the repo.
 
@@ -22,7 +22,7 @@ Because the notebook detects `/kaggle/working/` and writes there directly when r
 
 - A Kaggle account with **phone verification completed** — Kaggle requires this before it will run GPU-enabled kernels, even via the API.
 - `KAGGLE_USERNAME` and `KAGGLE_KEY` set as GitHub Actions repo secrets (Settings → Secrets and variables → Actions). These are the exact environment variable names the official `kaggle` CLI reads for authentication — don't rename them.
-- `notebooks/kernel-metadata.json`'s `id` field set to `<your-kaggle-username>/pytorch-dl-testbed`.
+- `notebooks/kernel-metadata.json`'s `id` field set to `<your-kaggle-username>/pytorch-hallucination-testing`.
 - **Before relying on CI**, run `kaggle kernels push -p notebooks/` locally once (with `kaggle` installed and your credentials configured) to confirm the kernel actually creates and runs on Kaggle's side — this catches auth/schema issues interactively instead of burning a CI run on them.
 
 ## Reading results

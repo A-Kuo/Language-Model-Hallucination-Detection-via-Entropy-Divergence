@@ -1,6 +1,6 @@
 {
-  "id": "augustinekuo/pytorch-dl-testbed",
-  "title": "PyTorch DL Testbed",
+  "id": "augustinekuo/pytorch-hallucination-testing",
+  "title": "PyTorch Hallucination Testing",
   "code_file": "pytorch_dl_testbed.ipynb",
   "language": "python",
   "kernel_type": "notebook",

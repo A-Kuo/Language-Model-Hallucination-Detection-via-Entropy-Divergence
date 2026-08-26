@@ -12,7 +12,7 @@ permissions:
 jobs:
   kaggle-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +36,7 @@ jobs:
         run: |
           SLUG=$(python -c "import json; print(json.load(open('notebooks/kernel-metadata.json'))['id'])")
           echo "Polling kernel: $SLUG"
-          for i in $(seq 1 60); do
+          for i in $(seq 1 170); do
             OUTPUT=$(kaggle kernels status "$SLUG")
             echo "  [$i] $OUTPUT"
             if echo "$OUTPUT" | grep -qi "complete"; then
