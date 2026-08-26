@@ -249,6 +249,193 @@ def run_synthetic_demo(num_samples: int = 500, seed: int = 42):
     return best
 
 
+<<<<<<< Updated upstream
+=======
+def run_real_pipeline(
+    samples,
+    model_name: str = "EleutherAI/pythia-160m",
+    seed: int = 42,
+    save_path: Optional[str] = None,
+) -> None:
+    """
+    Run the full pipeline on pre-labeled LabeledSample objects.
+
+    Used by both --halueval and --data modes. Loads the model once,
+    extracts features for every non-ambiguous sample, trains both
+    classifiers, runs ablation, and optionally saves the detector.
+    """
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Filter ambiguous labels
+    clean = [s for s in samples if s.label != "ambiguous"]
+    print(f"  {len(clean)} non-ambiguous samples (dropped {len(samples) - len(clean)} ambiguous)")
+
+    # Load model once
+    print(f"\nLoading {model_name} on {device}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        output_attentions=True,
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+    ).to(device).eval()
+
+    engineer = AttentionFeatureEngineer(context_length=32)
+    entropy_extractor = EntropyFeatureExtractor()
+
+    # Extract features: attention families, token-entropy baselines, and
+    # black-box top-K features (the latter simulated from the same logits
+    # computed for entropy features — no extra forward pass needed).
+    print(f"\nExtracting features for {len(clean)} samples...")
+    X_attn_list, X_entropy_list, X_blackbox_list, y_list = [], [], [], []
+    failed = 0
+
+    for i, sample in enumerate(clean):
+        try:
+            prompt = f"Question: {sample.question}\nAnswer:"
+            text = f"{prompt} {sample.model_answer}"
+
+            attentions, context_len = extract_attention_from_model(text, model, tokenizer, device)
+            attn_feats = engineer.extract(attentions, context_len)
+
+            logits, token_ids, answer_start = extract_logits_from_model(
+                text, model, tokenizer, device, prompt=prompt
+            )
+            entropy_feats = entropy_extractor.extract(logits, answer_start=answer_start, target_ids=token_ids)
+            topk_seq = simulate_topk_from_full_logits(
+                logits[answer_start:], token_ids[answer_start:], top_k=5
+            )
+            blackbox_feats = extract_blackbox_features(topk_seq)
+
+            X_attn_list.append(attn_feats)
+            X_entropy_list.append(entropy_feats)
+            X_blackbox_list.append(blackbox_feats)
+            y_list.append(1.0 if sample.label == "hallucinated" else 0.0)
+        except Exception as e:
+            failed += 1
+            if failed <= 3:
+                print(f"  Warning: sample {i} failed — {e}")
+
+        if (i + 1) % 100 == 0:
+            print(f"  {i + 1}/{len(clean)} processed  (failed: {failed})")
+
+    X_attn = np.array(X_attn_list)
+    X_entropy = np.array(X_entropy_list)
+    X_blackbox = np.array(X_blackbox_list)
+    X = np.hstack([X_attn, X_entropy])
+    y = np.array(y_list)
+    print(f"\nFeature matrix: {X.shape} (attention {X_attn.shape[1]} + entropy {X_entropy.shape[1]})   failed: {failed}")
+    print(f"Labels: {int(y.sum())} hallucinated / {int((y == 0).sum())} correct")
+
+    # Train / evaluate — stratified k-fold
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(len(y))
+    X, y, X_blackbox = X[idx], y[idx], X_blackbox[idx]
+    split = int(0.7 * len(y))
+    X_train, y_train = X[:split], y[:split]
+    X_test, y_test   = X[split:], y[split:]
+
+    feature_names = engineer.feature_names + entropy_extractor.feature_names
+    ablation_families = dict(DEFAULT_ABLATION_FAMILIES)
+    ablation_families["entropy_token"] = slice(X_attn.shape[1], X_attn.shape[1] + X_entropy.shape[1])
+
+    print(f"\n{'═' * 50}")
+    print(f"  STRATIFIED 5-FOLD CROSS-VALIDATION")
+    print(f"{'═' * 50}")
+
+    lr_cv_auroc, lr_ci = stratified_kfold_cv(X, y, k=5, classifier_type="logistic", seed=seed)
+    print(f"  LogReg          — AUROC: {lr_cv_auroc:.4f}  95% CI: [{lr_ci[0]:.4f}, {lr_ci[1]:.4f}]")
+
+    mlp_cv_auroc, mlp_ci = stratified_kfold_cv(X, y, k=5, classifier_type="mlp", seed=seed)
+    print(f"  MLP             — AUROC: {mlp_cv_auroc:.4f}  95% CI: [{mlp_ci[0]:.4f}, {mlp_ci[1]:.4f}]")
+
+    calib_cv_auroc, calib_ci = stratified_kfold_cv(
+        X, y, k=5, seed=seed, detector_factory=lambda: CalibratedEntropyDetector()
+    )
+    print(f"  CalibratedEntropy — AUROC: {calib_cv_auroc:.4f}  95% CI: [{calib_ci[0]:.4f}, {calib_ci[1]:.4f}]")
+
+    bb_cv_auroc, bb_ci = stratified_kfold_cv(
+        X_blackbox, y, k=5, seed=seed, detector_factory=lambda: BlackBoxEntropyDetector()
+    )
+    print(f"  BlackBoxTopK    — AUROC: {bb_cv_auroc:.4f}  95% CI: [{bb_ci[0]:.4f}, {bb_ci[1]:.4f}]")
+
+    # Final held-out evaluation
+    print(f"\nTraining on {split} / testing on {len(y) - split}...")
+
+    det_lr = HallucinationDetector(classifier_type="logistic", feature_names=feature_names)
+    det_lr.fit(X_train, y_train)
+    m_lr = det_lr.evaluate(X_test, y_test)
+    print_metrics(m_lr, "Logistic Regression (held-out)")
+
+    det_mlp = HallucinationDetector(classifier_type="mlp", hidden_dim=64, feature_names=feature_names)
+    det_mlp.fit(X_train, y_train)
+    m_mlp = det_mlp.evaluate(X_test, y_test)
+    print_metrics(m_mlp, "MLP (held-out)")
+
+    # BiLSTM on per-layer sequences
+    try:
+        import torch
+        print(f"\nExtracting per-layer sequences for BiLSTM...")
+        X_seq_list, y_seq_list = [], []
+        for sample in clean:
+            try:
+                text = f"Question: {sample.question}\nAnswer: {sample.model_answer}"
+                attentions, ctx_len = extract_attention_from_model(text, model, tokenizer, device)
+                seq = engineer.extract_layer_sequence(attentions)
+                X_seq_list.append(seq)
+                y_seq_list.append(1.0 if sample.label == "hallucinated" else 0.0)
+            except Exception:
+                pass
+
+        # Built as a parallel pair directly from `clean` (independent of the
+        # flat-feature X/y, which use their own shuffle) so a sequence can
+        # never drift from its label.
+        X_seq = np.array(X_seq_list)
+        y_seq = np.array(y_seq_list)
+
+        idx_s = rng.permutation(len(y_seq))
+        X_seq, y_seq = X_seq[idx_s], y_seq[idx_s]
+        sp = int(0.7 * len(y_seq))
+
+        bilstm_det = HallucinationDetector(classifier_type="bilstm", hidden_dim=32, epochs=60)
+        bilstm_det.fit_sequence(X_seq[:sp], y_seq[:sp])
+        m_bilstm = bilstm_det.evaluate_sequence(X_seq[sp:], y_seq[sp:])
+        print_metrics(m_bilstm, "BiLSTM (per-layer sequence, held-out)")
+
+        # Bootstrap CI for BiLSTM
+        probs_bilstm = bilstm_det.predict_proba_sequence(X_seq[sp:])
+        bi_lo, bi_hi = bootstrap_auroc_ci(probs_bilstm, y_seq[sp:])
+        print(f"  BiLSTM AUROC 95% CI: [{bi_lo:.4f}, {bi_hi:.4f}]")
+
+    except ImportError:
+        print("\n  BiLSTM skipped — PyTorch not available (pip install torch)")
+        bilstm_det = None
+        m_bilstm = None
+
+    # Feature importance
+    importance = det_lr.feature_importance()
+    print(f"\n{'═' * 50}")
+    print(f"  FEATURE IMPORTANCE (Logistic Regression)")
+    print(f"{'═' * 50}")
+    for name, weight in list(importance.items())[:10]:
+        bar = "█" * int(weight * 20)
+        print(f"  {name:<28} {weight:.4f}  {bar}")
+
+    ablation_study(X, y, feature_names, families=ablation_families)
+
+    if save_path:
+        if m_bilstm and bilstm_det:
+            bilstm_det._bilstm.save(save_path)
+            print(f"\nBiLSTM detector saved to {save_path}")
+        else:
+            best = det_mlp if m_mlp.auroc >= m_lr.auroc else det_lr
+            best.save(save_path)
+            print(f"\nDetector saved to {save_path}")
+
+
+>>>>>>> Stashed changes
 def main():
     parser = argparse.ArgumentParser(description="Hallucination Detection Pipeline v2")
     parser.add_argument("--synthetic", action="store_true", help="Run on synthetic data")
