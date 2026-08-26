@@ -3,11 +3,14 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "Natural Hallucination Analysis"
 abstract: >-
-  Two implementations of LLM hallucination detection via attention pattern
-  analysis. v1 uses Shannon entropy and cross-layer KL divergence with a
-  statistical hypothesis test. v2 extends to five feature families
-  (entropy, lookback ratio, frequency domain, spectral Laplacian, KL)
-  with a trained classifier and self-labeled data pipeline.
+  LLM hallucination detection using single-pass entropy statistics and
+  divergence from calibrated entropy distributions. Combines five
+  attention-pattern feature families (Shannon entropy, lookback ratio,
+  frequency domain, spectral Laplacian, cross-layer KL divergence) with
+  single-pass token-entropy baselines, an isotonic-calibration plus
+  Mahalanobis-divergence detector, and a black-box detector that works
+  from only the top-K logprobs a commercial completion API exposes.
+  Trained on a self-labeled data pipeline.
 authors:
   - family-names: "Kuo"
     given-names: "A"

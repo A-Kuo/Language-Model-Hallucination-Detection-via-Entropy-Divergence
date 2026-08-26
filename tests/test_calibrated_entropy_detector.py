@@ -1,16 +1,16 @@
-"""Tests for v2/calibrated_entropy_detector.py"""
+"""Tests for calibrated_entropy_detector.py"""
 
 import numpy as np
 import pytest
 
-from v2.calibrated_entropy_detector import (
+from calibrated_entropy_detector import (
     CalibratedEntropyDetector,
     isotonic_regression,
     mahalanobis_distance,
     fit_reference_distribution,
     percentile_rank,
 )
-from v2.detector import DetectorMetrics
+from detector import DetectorMetrics
 
 
 def _make_synthetic(n=400, d=18, seed=42):

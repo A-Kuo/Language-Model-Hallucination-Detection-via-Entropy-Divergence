@@ -13,20 +13,20 @@ pip install -e ".[dev]"
 ## Running Tests
 
 ```bash
-# v1 pytest suite
-pytest v1/test_attention_analyzer.py -v
+# pytest suite
+pytest tests -v
 
-# v1 module self-tests
-python v1/hypothesis_test.py
-python v1/confidence_calibrator.py
+# module self-tests
+python feature_engineer.py
+python detector.py
+python data_generator.py
+python entropy_baselines.py
+python calibrated_entropy_detector.py
+python blackbox_detector.py
+python adversarial.py
 
-# v2 self-tests
-python v2/feature_engineer.py
-python v2/detector.py
-python v2/data_generator.py
-
-# v2 synthetic pipeline
-python v2/pipeline.py --synthetic --num_samples 500
+# synthetic pipeline
+python pipeline.py --synthetic --num_samples 500
 ```
 
 ## Pull Request Guidelines
@@ -43,14 +43,14 @@ python v2/pipeline.py --synthetic --num_samples 500
 - Type hints on all public functions
 - Docstrings on all public classes and functions
 - NumPy-style docstrings preferred
-- No OpenAI model dependencies — use open-source models (EleutherAI, Meta, Mistral)
+- Core detection code stays open-source-model-friendly (EleutherAI, Meta, Mistral); the only OpenAI dependency is the optional, lazy-imported `blackbox_detector.py::fetch_topk_logprobs_openai()` demo path — never make OpenAI a hard dependency of any test or the default pipeline
 
-## Adding a New Feature Family (v2)
+## Adding a New Feature Family
 
-1. Implement `compute_<family>_features()` in `v2/feature_engineer.py`
+1. Implement `compute_<family>_features()` in `feature_engineer.py`
 2. Add the family to `FeatureConfig` and `FEATURE_SIZES`
-3. Add a self-test block in the `__main__` section
-4. Update `v2/AGENT.md` with the mathematical foundation
+3. Add a self-test block in the `__main__` section, plus real pytest coverage in `tests/`
+4. Update `AGENT.md` with the mathematical foundation
 5. Run the synthetic pipeline to verify integration
 
 ## Reporting Issues

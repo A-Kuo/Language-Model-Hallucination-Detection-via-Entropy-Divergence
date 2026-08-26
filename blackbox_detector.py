@@ -37,15 +37,12 @@ Usage:
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from v2.detector import DetectorMetrics, HallucinationDetector
+from detector import DetectorMetrics, HallucinationDetector
 
 EPS = 1e-12
 
@@ -162,7 +159,7 @@ def simulate_topk_from_full_logits(
     -------
     List[TokenTopK]
     """
-    from v2.entropy_baselines import softmax
+    from entropy_baselines import softmax
 
     probs = softmax(logits, axis=-1)
     logprobs = np.log(probs + EPS)
@@ -304,7 +301,7 @@ if __name__ == "__main__":
 
     # Test 1: simulated top-k entropy is a lower bound on true entropy
     print("\n--- Test 1: Top-k entropy is a lower bound ---")
-    from v2.entropy_baselines import softmax, token_entropy
+    from entropy_baselines import softmax, token_entropy
 
     V = 50
     logits = rng.standard_normal((20, V))

@@ -1,17 +1,17 @@
-"""Tests for v2/abstention.py"""
+"""Tests for abstention.py"""
 
 import numpy as np
 import pytest
 
-from v2.abstention import (
+from abstention import (
     risk_coverage_curve,
     _evaluate_threshold,
     area_under_risk_coverage,
     run_abstention_experiment,
     save_risk_coverage_table,
 )
-from v2.detector import HallucinationDetector
-from v2.pipeline import generate_synthetic_dataset
+from detector import HallucinationDetector
+from pipeline import generate_synthetic_dataset
 
 
 def test_coverage_monotonic_in_threshold():

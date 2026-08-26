@@ -17,14 +17,14 @@ Two deployment modes:
 
 Usage:
     # Deploy trained detector to Vertex AI
-    python v2/vertex_deploy.py \\
+    python vertex_deploy.py \\
         --project  your-gcp-project \\
         --region   us-central1 \\
-        --detector data/v2_detector.pkl \\
+        --detector data/detector.pkl \\
         --mode     online
 
     # Test deployed endpoint
-    python v2/vertex_deploy.py \\
+    python vertex_deploy.py \\
         --project  your-gcp-project \\
         --endpoint ENDPOINT_ID \\
         --test
@@ -96,7 +96,7 @@ class VertexDeployer:
         self,
         detector_path: str,
         display_name: str = "hallucination-detector",
-        description: str = "BiLSTM hallucination detector v2",
+        description: str = "Logistic-regression hallucination detector",
     ):
         """
         Upload trained detector to Vertex AI Model Registry.
@@ -117,7 +117,7 @@ class VertexDeployer:
             serving_container_image_uri=self.SERVING_IMAGE,
             labels={
                 "project": "hallucination-detection",
-                "version": "v2",
+                "version": "1-0-0",
             },
         )
         print(f"Model uploaded: {model.resource_name}")
@@ -156,7 +156,7 @@ class VertexDeployer:
         print(f"Deploying model to endpoint (machine_type={machine_type})...")
         model.deploy(
             endpoint=endpoint,
-            deployed_model_display_name="hallucination-detector-v2",
+            deployed_model_display_name="hallucination-detector",
             machine_type=machine_type,
             min_replica_count=min_replicas,
             max_replica_count=max_replicas,
@@ -166,7 +166,7 @@ class VertexDeployer:
         print(f"\nEndpoint deployed: {endpoint.resource_name}")
         print(f"Endpoint ID: {endpoint.name}")
         print(f"\nTest with:")
-        print(f"  python v2/vertex_deploy.py --project {self.project} "
+        print(f"  python vertex_deploy.py --project {self.project} "
               f"--endpoint {endpoint.name} --test")
         return endpoint
 
@@ -300,7 +300,7 @@ def predict(request: PredictRequest):
 '''
 
 
-def write_prediction_server(output_path: str = "v2/server.py") -> None:
+def write_prediction_server(output_path: str = "server.py") -> None:
     """Write the FastAPI prediction server to disk."""
     with open(output_path, "w") as f:
         f.write(PREDICTION_SERVER_CODE)
@@ -318,7 +318,7 @@ if __name__ == "__main__":
     parser.add_argument("--project",  required=True,  help="GCP project ID")
     parser.add_argument("--region",   default="us-central1")
     parser.add_argument("--bucket",   default=None,   help="GCS staging bucket (gs://...)")
-    parser.add_argument("--detector", default="data/v2_detector.pkl", help="Trained detector path")
+    parser.add_argument("--detector", default="data/detector.pkl", help="Trained detector path")
     parser.add_argument("--mode",     choices=["online", "batch", "server"], default="online")
     parser.add_argument("--endpoint", default=None,   help="Endpoint ID for testing")
     parser.add_argument("--test",     action="store_true", help="Test existing endpoint")
@@ -330,7 +330,7 @@ if __name__ == "__main__":
         write_prediction_server()
         print("\nTo run locally:")
         print("  pip install fastapi uvicorn")
-        print("  DETECTOR_PATH=data/v2_detector.pkl uvicorn v2.server:app --port 8080")
+        print("  DETECTOR_PATH=data/detector.pkl uvicorn server:app --port 8080")
         sys.exit(0)
 
     if args.test and args.endpoint:

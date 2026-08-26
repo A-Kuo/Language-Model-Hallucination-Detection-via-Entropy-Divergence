@@ -1,18 +1,18 @@
 """
-Tests for v2/adversarial.py
+Tests for adversarial.py
 
 Covers the sequence-mode scoring regression: AdversarialEvaluator._score_text()
 must call predict_proba_sequence() (not the flat predict_proba()) when
 use_sequence=True and the detector exposes a sequence-specific method, since
 a HallucinationDetector(classifier_type="bilstm") has no working flat
-predict_proba() (see v2/tests/test_detector.py for that guard).
+predict_proba() (see tests/test_detector.py for that guard).
 """
 
 import numpy as np
 import pytest
 
-import v2.pipeline as pipeline_mod
-from v2.adversarial import AdversarialEvaluator, obfuscate_text, paraphrase_text, multilingual_prefix
+import pipeline as pipeline_mod
+from adversarial import AdversarialEvaluator, obfuscate_text, paraphrase_text, multilingual_prefix
 
 
 class _RecordingSequenceDetector:

@@ -1,0 +1,10 @@
+{
+  "id": "your-kaggle-username/my-pytorch-test",
+  "title": "My PyTorch Test",
+  "code_file": "notebooks/train_eval.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_internet": "true"
+}

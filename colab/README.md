@@ -4,10 +4,11 @@ Run the computationally heavy parts of this project on a free Colab T4 GPU.
 
 | Notebook | Opens in Colab | What it does | Runtime |
 |----------|---------------|--------------|---------|
-| `v1_benchmark.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Natural-Hallucination-Analysis/blob/main/colab/v1_benchmark.ipynb) | Real GPU benchmark of attention analyzer + hypothesis test | ~5 min |
-| `v2_full_pipeline.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Natural-Hallucination-Analysis/blob/main/colab/v2_full_pipeline.ipynb) | Full pipeline: Claude QA gen → Pythia answers → judge → features → classifier | ~15-30 min |
+| `full_pipeline.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Natural-Hallucination-Analysis/blob/main/colab/full_pipeline.ipynb) | Full pipeline: Claude QA gen → Pythia answers → judge → features → classifier | ~15-30 min |
 
-## Before Running v2
+See also `gpu_benchmark.ipynb`, `ablation_study.ipynb`, and `quick_cpu_validation.ipynb` (indexed in [`../COLABS.md`](../COLABS.md)) — **these three currently import from `run_experiment.py`, a module that was removed when the old `v1/`/`v2/` split was consolidated into a single flat codebase at the repo root; they need to be ported to the current `pipeline.py`/`detector.py` API before they'll run again.**
+
+## Before Running
 
 Add your Anthropic API key as a Colab Secret:
 
@@ -21,22 +22,13 @@ The notebook reads it with `google.colab.userdata.get('ANTHROPIC_API_KEY')` — 
 
 ## Outputs
 
-Each notebook downloads results automatically at the end:
-
-**v1:**
-- `v1_benchmark_results.json` — real AUROC, latency, throughput numbers
-- `v1_attention_signals.png` — entropy + KL distributions
-- `v1_entropy_heatmap.png` — per-layer, per-head entropy heatmap
-
-**v2:**
-- `v2_pipeline_results.json` — full metrics + feature importance
-- `v2_dataset.jsonl` — labeled dataset (commit to `data/` for reproducibility)
-- `v2_detector.pkl` — trained classifier
-- `v2_feature_distributions.png` — feature family separation
+`full_pipeline.ipynb` downloads results automatically at the end:
+- `pipeline_results.json` — full metrics + feature importance
+- `dataset.jsonl` — labeled dataset (commit to `data/` for reproducibility)
+- `detector.pkl` — trained classifier
+- `feature_distributions.png` — feature family separation
 
 ## Using Outputs to Update the Repo
 
-After running, update the benchmarks tables in:
-- `README.md` — root-level comparison table
-- `v1/README.md` — Key Results table
-- `v2/README.md` — add a real metrics table
+After running, update the benchmark tables in:
+- `README.md` — root-level comparison table and Current Status section

@@ -1,0 +1,26 @@
+# Hallucination Detection — Entropy Statistics & Calibrated Divergence
+# Core dependencies (pinned for reproducibility)
+
+numpy>=1.24.0,<2.1
+scipy>=1.10.0,<1.15
+
+# Testing
+pytest>=7.0.0,<9.1
+
+# Full model pipeline (real-model attention/logits, BiLSTM):
+# pip install torch transformers
+
+# HaluEval benchmark (free, no API):
+# pip install datasets
+
+# Self-generated data (Anthropic judge):
+# pip install anthropic
+
+# Black-box top-K logprob detector (real API demo):
+# pip install openai
+
+# Embedding anomaly detection:
+# pip install chromadb sentence-transformers
+
+# Vertex AI deployment:
+# pip install google-cloud-aiplatform fastapi uvicorn

@@ -37,17 +37,17 @@ The codebase is strong. Here's what exists vs. what's needed:
 
 | Element | Status |
 |---------|--------|
-| Mathematical formulation | ✅ Fully documented in attention_analyzer.py |
+| Mathematical formulation | ✅ Fully documented in feature_engineer.py / entropy_baselines.py |
 | Shannon entropy computation | ✅ Implemented, tested, self-verified |
 | Cross-layer KL divergence | ✅ Implemented, tested |
-| Hypothesis testing framework | ✅ Full statistical framework in hypothesis_test.py |
-| BiLSTM classifier | ✅ Full implementation in v2/detector.py |
+| Statistical evaluation framework | ✅ Stratified k-fold CV + bootstrap AUROC CIs in pipeline.py |
+| BiLSTM classifier | ✅ Full implementation in detector.py |
 | Logistic regression baseline | ✅ Implemented from scratch (numpy-only) |
 | HaluEval benchmark | ✅ Referenced in detector.py docstring |
-| Colab notebooks | ✅ v1_benchmark.ipynb and v2_full_pipeline.ipynb |
+| Colab notebooks | ✅ gpu_benchmark.ipynb, ablation_study.ipynb, full_pipeline.ipynb |
 | CITATION.cff | ✅ Already in repo |
 | CI/CD | ✅ GitHub Actions test.yml |
-| AUROC number cited | ✅ BiLSTM ~0.96 vs LR ~0.84 in detector.py docstring |
+| AUROC number cited | ✅ LogReg ~0.91 vs BiLSTM ~0.78 in detector.py docstring (corrected to match actual reported results) |
 
 ---
 
@@ -59,7 +59,7 @@ The codebase is strong. Here's what exists vs. what's needed:
 ```bash
 # Run the Colab notebook locally or on Colab GPU
 cd hallu-repo
-# Follow colab/v1_benchmark.ipynb
+# Follow colab/gpu_benchmark.ipynb (or colab/full_pipeline.ipynb for the full self-labeled pipeline)
 ```
 
 Fill in the TODO placeholders in paper.tex with actual results.

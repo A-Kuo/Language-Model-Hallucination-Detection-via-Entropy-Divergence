@@ -1,6 +1,6 @@
 # Language Model Hallucination Detection via Entropy Divergence
 
-**Information-theoretic uncertainty signals for detecting when LLMs don't know what they're saying**
+**Detecting hallucinations in LLM outputs using single-pass entropy statistics and divergence from calibrated entropy distributions.**
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
@@ -23,7 +23,7 @@ Existing detection approaches fall into two camps:
 | **Retrieval augmentation** | Ground every claim against a knowledge base | Doesn't work for reasoning tasks, synthesis, or domains without clean retrieval targets |
 | **Human-in-the-loop** | Flag outputs for human review | Doesn't scale; doesn't give you a signal for *which* outputs to flag |
 
-This work takes a different approach: **use the internal probability distribution of the model as a hallucination signal**, before the output is even decoded.
+This project takes a different approach: **use the model's internal uncertainty — its output probability distribution and attention patterns — as a hallucination signal**, calibrated against a labeled reference set rather than thresholded ad hoc.
 
 ---
 
@@ -37,12 +37,7 @@ When a language model generates text, it doesn't just produce the most likely to
 
 This relationship is grounded in information theory: Shannon entropy H(p) = -Σ p(x) log p(x) is the expected surprise of a distribution. A model that "knows" the answer produces low-surprise next tokens. A model that is generating plausible-sounding text without grounded knowledge produces high-surprise distributions.
 
-**Why this is better than output-text heuristics:**
-- It operates on the model's internal state, not post-hoc text analysis
-- It's architecture-agnostic — works on any autoregressive LLM
-- It produces a continuous score, not a binary flag, enabling threshold tuning
-- It's computed in a single forward pass with negligible overhead
-- It generalizes across domains and languages without fine-tuning
+But raw entropy thresholds don't transfer across models or domains — a score of 0.4 might indicate hallucination in historical facts and be normal in creative writing. **This project's central contribution is calibration**: instead of thresholding raw entropy, it fits the distribution entropy actually takes on a labeled reference set of correct answers, then scores new examples by how far they diverge from that calibrated reference (see [`CalibratedEntropyDetector`](#detectors) below).
 
 ---
 
@@ -54,10 +49,26 @@ The fastest way to get paper-quality results (no local setup required):
 |----------|---------|---------|-------|
 | **[GPU Benchmark](COLABS.md)** | Generate paper numbers (AUROC, FPR, latency) | ~15 min T4 GPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/gpu_benchmark.ipynb) |
 | **[Ablation Study](COLABS.md)** | Fill Table 2 (entropy-only vs KL-only vs both) | ~8 min T4 GPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/ablation_study.ipynb) |
-| **[Quick Validation](COLABS.md)** | Test pipeline on CPU (GPT-2, synthetic data) | ~3 min CPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/quick_cpu_validation.ipynb) |
+| **[Quick Validation](COLABS.md)** | Test pipeline on CPU (synthetic data) | ~3 min CPU | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/quick_cpu_validation.ipynb) |
 
-**Auto-commit:** Add `GH_TOKEN` to Colab Secrets → results push directly to repo  
+**Auto-commit:** Add `GH_TOKEN` to Colab Secrets → results push directly to repo
 **See all:** [COLABS.md](COLABS.md) — full index with detailed instructions
+
+---
+
+## Detectors
+
+| Detector | File | Access needed | Notes |
+|---|---|---|---|
+| Logistic Regression | `detector.py` | White-box (attention) | Primary/strongest baseline, ~0.91 AUROC on HaluEval |
+| MLP | `detector.py` | White-box (attention) | Captures nonlinear feature interactions |
+| BiLSTM | `detector.py` | White-box (attention) | Per-layer sequence model; currently ~0.78 AUROC, underperforms logistic regression |
+| **CalibratedEntropyDetector** | `calibrated_entropy_detector.py` | White-box (entropy and/or attention features) | **Main original contribution.** Calibrates raw entropy features against the distribution they take on correct answers (isotonic regression) and scores new examples by Mahalanobis divergence from that reference, instead of thresholding raw entropy directly |
+| **BlackBoxEntropyDetector** | `blackbox_detector.py` | **Top-K logprobs only** | The only detector usable against a commercial completions API (e.g. OpenAI's `top_logprobs`) — no attention weights or full-vocab logits required |
+
+Established single-pass token-entropy baselines (mean/max/std entropy, perplexity, top-k entropy, confidence margin) live in `entropy_baselines.py` and feed both the flat classifiers above and `CalibratedEntropyDetector`.
+
+An abstention/selective-prediction experiment (`abstention.py`) shows the practical payoff of calibration: refusing to answer the highest-risk examples raises accuracy on the examples that are answered, reported as a risk-coverage curve.
 
 ---
 
@@ -78,83 +89,151 @@ H_seq = mean(H_t for t in generated_tokens)
 H_seq_max = max(H_t for t in generated_tokens)
 ```
 
-High `H_seq` indicates the model was uncertain throughout the generation. High `H_seq_max` indicates at least one token was highly uncertain — useful for detecting *insertion* of a fabricated entity into an otherwise confident generation.
+High `H_seq` indicates the model was uncertain throughout the generation. High `H_seq_max` indicates at least one token was highly uncertain — useful for detecting *insertion* of a fabricated entity into an otherwise confident generation. Implemented in `entropy_baselines.py::compute_entropy_baseline_features`.
 
-### KL Divergence Between Forward Passes
+### Attention Entropy and Cross-Layer KL Divergence
 
-A single entropy measurement can be noisy. A more robust signal uses **KL divergence between multiple stochastic forward passes** (using dropout at inference time or temperature sampling):
-
-```
-D_KL(p_pass1 || p_pass2) = Σ_{v} p_pass1(v) · log(p_pass1(v) / p_pass2(v))
-```
-
-If the model has genuine knowledge about a token, its distribution will be stable across passes (low KL). If the model is confabulating, small random perturbations will produce very different distributions (high KL). This is the **epistemic uncertainty** signal — it distinguishes "I know this confidently" from "I'm generating plausibly."
-
-### Layer-Wise Entropy Divergence
-
-An extended method measures entropy at multiple transformer layers. Early layers capture syntactic plausibility; later layers capture semantic and factual grounding. **Entropy that is high in late layers but low in early layers** is a signature of syntactic fluency without factual backing — the hallucination pattern in transformer architectures.
+A complementary white-box signal measures entropy and divergence over the model's *attention* patterns rather than its output distribution — implemented across five feature families in `feature_engineer.py` (Shannon entropy of attention, lookback ratio grounding context vs. generation, frequency-domain instability, spectral/Laplacian graph structure, and cross-layer KL divergence):
 
 ```
-ΔH_layer = H_final_layer - H_intermediate_layer
+D_KL(p_layer_i || p_layer_j) = Σ_{v} p_layer_i(v) · log(p_layer_i(v) / p_layer_j(v))
 ```
 
-Large positive `ΔH_layer` for a token: the model is syntactically confident but factually unanchored.
+Layers disagreeing strongly (high cross-layer KL) is a signature of internal inconsistency — the model's early-layer syntactic representation and late-layer semantic representation are pulling in different directions.
 
-### Self-Referencing Score
+### Calibrated Entropy Divergence (this repo's contribution)
 
-A complementary method (used in the `self_reference` module): generate the claim, then ask the model to evaluate the claim's probability given its own context. The cross-entropy between the original generation and the self-referencing evaluation provides a calibration signal:
+Raw entropy scores are not directly comparable across model sizes or domains. `calibrated_entropy_detector.py` fits an isotonic-regression calibration mapping from raw entropy to `P(hallucination)` on a labeled reference set, and separately fits a reference distribution of entropy signatures for *correct* answers (mean + shrinkage-regularized covariance). New examples are scored by:
 
 ```
-SR_score = H(p_original || p_self_eval)
+p(x) = w · isotonic(u(x)) + (1 − w) · sigmoid(a · mahalanobis(x, μ_ref, Σ_ref) + b)
 ```
 
-Consistent generations will have low self-referencing entropy. Hallucinated claims will be inconsistently supported when the model examines them in context.
+This directly implements the finding of arXiv:2603.21172 ("Entropy Alone is Insufficient for Safe Selective Prediction in LLMs") that pure entropy thresholds under-perform for selective prediction without calibration.
+
+### Top-K Logprob Entropy (black-box)
+
+Commercial completion APIs typically expose only a small top-K logprob list per token, not the full vocabulary distribution. `blackbox_detector.py` computes a documented *lower bound* on true entropy from only that top-K mass, still informative because a low top-K mass itself indicates most probability lies outside the visible top-K — i.e., high true entropy.
 
 ---
 
-## Architecture
+## Quickstart
+
+```bash
+pip install -r requirements.txt
+
+# Synthetic demo (no model/API)
+python pipeline.py --synthetic --num_samples 1000
+
+# HaluEval benchmark (no API — pip install datasets), trains all detectors
+# and prints AUROC/CI for LogReg, MLP, BiLSTM, CalibratedEntropyDetector,
+# and BlackBoxEntropyDetector side by side
+python pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m
+
+# Abstention / selective-prediction experiment
+python abstention.py --synthetic --num_samples 1000
+python pipeline.py --synthetic --num_samples 1000 --abstention
+
+# Full pipeline with self-generated data (requires ANTHROPIC_API_KEY)
+python pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m --save detector.pkl
+```
+
+Default local model is [EleutherAI/pythia-160m](https://huggingface.co/EleutherAI/pythia-160m). For better hallucination rates, use larger models like Llama or Mistral.
+
+### Usage Examples
+
+```python
+from detector import HallucinationDetector
+
+detector = HallucinationDetector(classifier_type="logistic")
+detector.fit(X_train, y_train)                 # X: (N, 18) attention features
+metrics = detector.evaluate(X_test, y_test)
+print(f"AUROC: {metrics.auroc:.4f}")
+```
+
+```python
+from calibrated_entropy_detector import CalibratedEntropyDetector
+
+detector = CalibratedEntropyDetector()
+detector.fit(X_calibration, y_calibration)      # fits isotonic mapping + reference distribution
+probs = detector.predict_proba(X_test)
+divergence = detector.divergence_scores(X_test)  # raw Mahalanobis divergence, for diagnostics
+```
+
+```python
+from blackbox_detector import simulate_topk_from_full_logits, extract_blackbox_features, BlackBoxEntropyDetector
+
+# Offline (no API key) — derives simulated top-K logprobs from local model logits
+sequence = simulate_topk_from_full_logits(logits, chosen_token_ids, top_k=5)
+features = extract_blackbox_features(sequence)
+
+detector = BlackBoxEntropyDetector()
+detector.fit(X_train, y_train)
+```
+
+```python
+from abstention import run_abstention_experiment
+
+result = run_abstention_experiment(X, y, detector_factory=lambda: HallucinationDetector(classifier_type="logistic"))
+print(f"Accuracy at {result['headline_coverage']:.0%} coverage: {result['headline_accuracy']:.4f}")
+```
+
+**Black-box demo (real API):** `blackbox_detector.py::fetch_topk_logprobs_openai()` calls OpenAI's `chat.completions` with `logprobs=True, top_logprobs=5` for a live demo (requires `pip install openai` and `OPENAI_API_KEY`). Everything else — including all tests and the `--synthetic`/`--halueval` pipeline modes — uses `simulate_topk_from_full_logits()`, an offline path that derives simulated top-K logprobs from local model logits, so no network access or API key is required to reproduce results.
+
+**Adversarial robustness:** Tested against obfuscation (character substitution), paraphrase (synonym replacement), and multilingual (Spanish/French/German/Japanese prefix) attacks. Stability > 80% across all attack types. See `adversarial.py`.
+
+**Embedding anomaly detection:** ChromaDB vector store + sentence-transformers; centroid distance and Mahalanobis distance from correct-answer embedding distribution. Ensembled with attention score: `0.6 × attn + 0.4 × embedding`. See `embedding_anomaly.py`.
+
+**Deployment:** Vertex AI online endpoint (REST, autoscaling) and batch prediction (JSONL → GCS). See `vertex_deploy.py`.
+
+**Tests:** `pytest tests` (wired into `pyproject.toml` testpaths). Every detector and feature-extraction module has unit coverage; torch/openai-dependent tests skip cleanly when those optional dependencies aren't installed.
+
+*See [`AGENT.md`](AGENT.md) for implementation details, known limitations, and research foundations.*
+
+---
+
+## Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         INPUT PROMPT                                 │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    AUTOREGRESSIVE LLM (frozen)                       │
-│                                                                     │
-│  Token 1    Token 2    Token 3    ...    Token N                    │
-│  ┌──────┐   ┌──────┐   ┌──────┐          ┌──────┐                  │
-│  │p_t(v)│   │p_t(v)│   │p_t(v)│          │p_t(v)│                  │
-│  └──┬───┘   └──┬───┘   └──┬───┘          └──┬───┘                  │
-│     │          │           │                  │                      │
-│     ▼          ▼           ▼                  ▼                      │
-│  ┌──────┐   ┌──────┐   ┌──────┐          ┌──────┐                  │
-│  │ H_1  │   │ H_2  │   │ H_3  │          │ H_N  │                  │
-│  └──────┘   └──────┘   └──────┘          └──────┘                  │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    ENTROPY AGGREGATION MODULE                        │
-│                                                                     │
-│  ┌──────────────────┐   ┌──────────────────┐   ┌────────────────┐  │
-│  │  Sequence-Level  │   │  Token-Max        │   │  Layer-Wise    │  │
-│  │  Mean Entropy    │   │  Spike Detection  │   │  Divergence    │  │
-│  └────────┬─────────┘   └────────┬──────────┘   └──────┬─────────┘  │
-│           └──────────────────────┴───────────────────────┘          │
-│                                  │                                   │
-│                                  ▼                                   │
-│                     ┌────────────────────────┐                      │
-│                     │  HALLUCINATION SCORE   │                      │
-│                     │  [0.0 — 1.0 continuous]│                      │
-│                     └────────────────────────┘                      │
-└─────────────────────────────────────────────────────────────────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-      [ACCEPT output]  [FLAG for review]  [REJECT / retry]
+.
+├── data_generator.py               # Self-data via Anthropic API + HaluEval loader
+├── feature_engineer.py             # 5 attention families → 18D vector + per-layer sequence (L×6)
+├── entropy_baselines.py            # Single-pass token-entropy features (6D) from output logits
+├── detector.py                     # LogReg / MLP / BiLSTM classifiers + shared metrics helper
+├── calibrated_entropy_detector.py  # Main contribution: isotonic calibration + Mahalanobis divergence
+├── blackbox_detector.py            # Top-K logprob detector (real API + offline simulation)
+├── abstention.py                   # Risk-coverage / selective-prediction experiment
+├── pipeline.py                     # End-to-end: stratified k-fold, bootstrap CIs, ablation
+├── adversarial.py                  # Robustness: obfuscation, paraphrase, multilingual
+├── embedding_anomaly.py            # ChromaDB + centroid/Mahalanobis anomaly detection
+├── vertex_deploy.py                # GCP Vertex AI deployment (online + batch)
+├── tests/                          # pytest suite for every module above
+├── notebooks/                      # PyTorch experiment notebooks; results in notebooks/outputs/
+├── colab/                          # Colab notebooks for GPU benchmark / ablation / validation
+├── paper/                          # arXiv paper source
+├── results/                        # Committed benchmark/ablation results (JSON)
+├── AGENT.md
+├── README.md
+└── requirements.txt
 ```
+
+---
+
+## Feature Vector Reference
+
+**Attention families (18D, `feature_engineer.py`):**
+
+| Family | Features | Dim |
+|--------|----------|-----|
+| Entropy | mean, max, std | 3 |
+| Lookback | ratio_mean, min, std, entropy | 4 |
+| Frequency | high_freq_mean, max, centroid, spectral_entropy | 4 |
+| Spectral | fiedler_mean, std, spectral_gap, laplacian_energy | 4 |
+| Cross-Layer KL | total, max, std | 3 |
+
+**Token-entropy baseline (6D, `entropy_baselines.py`):** `entropy_mean`, `entropy_max`, `entropy_std`, `perplexity`, `topk_entropy_mean`, `margin_mean`
+
+**Black-box top-K (7D, `blackbox_detector.py`):** `topk_entropy_mean`, `topk_entropy_max`, `topk_entropy_std`, `topk_mass_mean`, `topk_mass_min`, `margin_mean`, `margin_min`
 
 ---
 
@@ -163,16 +242,18 @@ Consistent generations will have low self-referencing entropy. Hallucinated clai
 This work builds on a lineage of uncertainty quantification research in deep learning:
 
 **Foundational uncertainty decomposition:**
-- Malinin, A. & Gales, M. (2018). "Predictive Uncertainty Estimation via Prior Networks." *NeurIPS 2018.* — Introduced the decomposition of uncertainty into aleatoric (data uncertainty) and epistemic (model uncertainty) components for neural networks. The KL divergence approach in this repo operationalizes the epistemic component for generative models.
-- Gal, Y. & Ghahramani, Z. (2016). "Dropout as a Bayesian Approximation: Representing Model Uncertainty in Deep Learning." *ICML 2016.* — Established MC dropout as a practical tool for epistemic uncertainty estimation. The multi-pass KL divergence method in this repo extends this to token-level uncertainty in autoregressive generation.
+- Malinin, A. & Gales, M. (2018). "Predictive Uncertainty Estimation via Prior Networks." *NeurIPS 2018.* — Introduced the decomposition of uncertainty into aleatoric (data uncertainty) and epistemic (model uncertainty) components for neural networks.
+- Gal, Y. & Ghahramani, Z. (2016). "Dropout as a Bayesian Approximation: Representing Model Uncertainty in Deep Learning." *ICML 2016.* — Established MC dropout as a practical tool for epistemic uncertainty estimation.
 
-**LLM-specific calibration:**
-- Kuhn, L., Gal, Y., & Farquhar, S. (2023). "Semantic Entropy: Detecting Hallucinations in Large Language Models." *ICML 2023.* — Related approach using semantic clustering across multiple generations; this repo uses distributional divergence within single-model forward passes rather than cross-generation semantic clustering.
-- Kadavath, S. et al. (2022). "Language Models (Mostly) Know What They Know." *arXiv:2207.05221.* — Self-evaluation as calibration signal; related to the self-referencing module in this repo.
+**LLM-specific calibration and hallucination detection:**
+- Kuhn, L., Gal, Y., & Farquhar, S. (2023). "Semantic Entropy: Detecting Hallucinations in Large Language Models." *ICML 2023.* — Related approach using semantic clustering across multiple generations; this repo uses single-pass distributional statistics plus calibration rather than multi-sample semantic clustering.
+- Kadavath, S. et al. (2022). "Language Models (Mostly) Know What They Know." *arXiv:2207.05221.* — Self-evaluation as a calibration signal.
+- Chuang, Y. et al. (2024). "Lookback Lens: Detecting and Mitigating Contextual Hallucinations in LLMs Using Only Attention Maps." *EMNLP 2024.* — The lookback-ratio attention feature family.
+- "Entropy Alone is Insufficient for Safe Selective Prediction in LLMs" (2026). *arXiv:2603.21172.* — Motivates the calibration layer in `calibrated_entropy_detector.py` directly.
 
 **Entropy in information theory (foundational):**
-- Shannon, C.E. (1948). "A Mathematical Theory of Communication." *Bell System Technical Journal, 27*(3):379–423. — The entropy measure H(p) = -Σ p(x) log p(x) used throughout this work.
-- Kullback, S. & Leibler, R.A. (1951). "On Information and Sufficiency." *Annals of Mathematical Statistics, 22*(1):79–86. — KL divergence as a measure of distributional difference.
+- Shannon, C.E. (1948). "A Mathematical Theory of Communication." *Bell System Technical Journal, 27*(3):379–423.
+- Kullback, S. & Leibler, R.A. (1951). "On Information and Sufficiency." *Annals of Mathematical Statistics, 22*(1):79–86.
 
 ---
 
@@ -191,163 +272,40 @@ This repository is the methodological foundation for entropy-based uncertainty q
 
 ---
 
-## Implementation
-
-### Installation
-
-```bash
-git clone https://github.com/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence.git
-cd Language-Model-Hallucination-Detection-via-Entropy-Divergence
-pip install -e .
-```
-
-Dependencies:
-```
-torch>=2.0
-transformers>=4.35
-numpy>=1.24
-scipy>=1.10
-```
-
-### Usage Examples
-
-#### Basic Token Entropy Scoring
-
-```python
-from hallucination_detection import EntropyScorer
-
-scorer = EntropyScorer.from_pretrained("meta-llama/Llama-3-8b-hf")
-
-prompt = "The capital of the Byzantine Empire was"
-result = scorer.score(prompt, max_new_tokens=20)
-
-print(f"Generation: {result.text}")
-print(f"Mean entropy: {result.mean_entropy:.3f}")
-print(f"Max token entropy: {result.max_entropy:.3f}")
-print(f"Hallucination risk: {result.risk_level}")  # LOW / MEDIUM / HIGH
-```
-
-#### KL Divergence Across Passes
-
-```python
-from hallucination_detection import KLDivergenceScorer
-
-scorer = KLDivergenceScorer(
-    model_name="meta-llama/Llama-3-8b-hf",
-    n_passes=5,           # number of stochastic forward passes
-    dropout_rate=0.1      # inference-time dropout for epistemic uncertainty
-)
-
-result = scorer.score(
-    prompt="Describe the mechanism by which mRNA vaccines produce immunity.",
-    max_new_tokens=100
-)
-
-print(f"Mean KL divergence: {result.mean_kl:.4f}")
-print(f"High-uncertainty tokens: {result.flagged_tokens}")
-# e.g., ["binds", "spike", "ACE2"] — model is unstable on specific claims
-```
-
-#### Layer-Wise Entropy Analysis
-
-```python
-from hallucination_detection import LayerEntropyAnalyzer
-
-analyzer = LayerEntropyAnalyzer(
-    model_name="meta-llama/Llama-3-8b-hf",
-    layers_to_probe=[8, 16, 24, 31]  # layer indices to instrument
-)
-
-result = analyzer.analyze(
-    prompt="The GDP of Lichtenstein in 2019 was",
-    max_new_tokens=10
-)
-
-# Plot entropy per layer per token
-result.plot_entropy_surface("entropy_surface.png")
-print(f"Late-layer entropy spike: {result.late_layer_spike}")
-# High spike → syntactic fluency without factual anchoring
-```
-
-#### Batch Evaluation
-
-```python
-from hallucination_detection import HallucinationEvaluator
-import pandas as pd
-
-evaluator = HallucinationEvaluator(method="entropy_kl_combined")
-
-prompts = df['question'].tolist()
-scores = evaluator.evaluate_batch(prompts, batch_size=16, show_progress=True)
-
-df['hallucination_risk'] = scores['risk_score']
-df['entropy_mean'] = scores['mean_entropy']
-df['flagged'] = scores['risk_level'].isin(['MEDIUM', 'HIGH'])
-```
-
----
-
-## Calibration
-
-Raw entropy scores are not directly comparable across model sizes or domains. The calibration module fits a threshold function on a labeled held-out set:
-
-```python
-from hallucination_detection.calibration import IsotonicCalibrator
-
-calibrator = IsotonicCalibrator()
-calibrator.fit(
-    entropy_scores=calibration_set['entropy'],
-    labels=calibration_set['is_hallucination']  # binary labels from human annotation
-)
-
-# Apply calibrated threshold
-calibrator.save("calibrators/llama3-8b-factual.pkl")
-
-# Use in production
-scorer = EntropyScorer.from_pretrained("meta-llama/Llama-3-8b-hf")
-scorer.set_calibrator("calibrators/llama3-8b-factual.pkl")
-```
-
----
-
 ## Research Limitations and Open Questions
 
 ### Current Limitations
 
 | Limitation | Description | Mitigation |
 |------------|-------------|------------|
-| **Calibration required per domain** | Entropy thresholds differ across knowledge domains; a score of 0.4 may indicate hallucination in historical facts but be normal in creative writing | Fit separate calibrators per use-case domain |
-| **Confident confabulation** | A model can produce low-entropy hallucinations when it has seen similar (but incorrect) patterns many times in training | Pair with retrieval-augmented verification for high-stakes claims |
-| **Layer probing requires white-box access** | Token-level and layer-wise methods require logit or hidden-state access; not available for API-only models | API-accessible models fall back to multi-generation KL divergence via sampling |
-| **Computational overhead of multi-pass KL** | N forward passes is N× the compute cost of standard inference | Cache logits for hot prompts; use entropy scoring (single pass) as a pre-filter |
-| **Does not localize the false claim** | The method scores *sequences* or *tokens*, not *propositions* — it cannot directly say "this specific entity name is hallucinated" | Use high-entropy token positions as candidate localization signals, then apply targeted retrieval |
+| **Calibration required per domain** | Entropy thresholds differ across knowledge domains; a score that indicates hallucination in historical facts may be normal in creative writing | Fit separate `CalibratedEntropyDetector` instances per use-case domain |
+| **Confident confabulation** | A model can produce low-entropy hallucinations when it has seen similar (but incorrect) patterns many times in training | Pair with retrieval-augmented verification for high-stakes claims; attention-based features are a first-pass filter, not a complete solution (see `AGENT.md`) |
+| **Layer/attention probing requires white-box access** | Attention-based and full-logit methods require model internals; not available for API-only models | `BlackBoxEntropyDetector` falls back to top-K logprobs for API-only access |
+| **BiLSTM underperforms the flat baseline** | The per-layer sequence model has not yet outperformed logistic regression on HaluEval (~0.78 vs ~0.91 AUROC) — kept for sequence-model research, not as the recommended classifier | Use `classifier_type="logistic"` by default |
+| **Does not localize the false claim** | The method scores *sequences*, not *propositions* — it cannot directly say "this specific entity name is hallucinated" | Use high-entropy token positions as candidate localization signals, then apply targeted retrieval |
 
 ### Open Research Questions
 
-1. **Entropy under RLHF fine-tuning:** Models fine-tuned with RLHF learn to produce lower-entropy outputs as a reward-maximizing behavior. Does this compress the hallucination signal in the entropy distribution? Initial experiments suggest yes — recalibration after RLHF is necessary.
-
-2. **Attention entropy vs. output entropy:** Output vocabulary entropy and attention pattern entropy are distinct signals. Attention entropy may provide earlier (lower-layer) detection of factual uncertainty. This has not been thoroughly benchmarked.
-
-3. **Multi-hop reasoning hallucinations:** Complex reasoning chains where each individual step has low entropy but the composition produces a false conclusion are not well captured by token-level entropy. Sequence-level divergence across entire reasoning traces is an active research area.
-
-4. **Cross-lingual generalization:** Entropy calibration is likely language-specific. A model may have different entropy profiles for English vs. lower-resource languages even when knowledge is equivalent.
-
-5. **Hallucination vs. knowledge boundary:** Entropy reliably detects when the model is *outside* its training distribution. But this conflates genuine uncertainty (model was never trained on this) with confabulation (model was trained on conflicting or incorrect data). Distinguishing these requires additional signals.
+1. **Entropy under RLHF fine-tuning:** Models fine-tuned with RLHF learn to produce lower-entropy outputs as a reward-maximizing behavior. Does this compress the hallucination signal in the entropy distribution?
+2. **Attention entropy vs. output entropy:** These are distinct signals with different layer-depth sensitivity; `ablation_study` in `pipeline.py` measures their relative contribution but a full head-to-head benchmark is still open.
+3. **Multi-hop reasoning hallucinations:** Complex reasoning chains where each individual step has low entropy but the composition produces a false conclusion are not well captured by token-level entropy.
+4. **Cross-lingual generalization:** Entropy calibration is likely language-specific.
+5. **Hallucination vs. knowledge boundary:** Entropy reliably detects when the model is *outside* its training distribution, but conflates genuine uncertainty with confabulation on conflicting/incorrect training data.
 
 ---
 
 ## Current Status
 
-**Beta (Q2 2026)**
+**Beta**
 
-- ✅ Token-level entropy scorer (single forward pass)
-- ✅ KL divergence multi-pass scorer (MC dropout)
-- ✅ Isotonic calibration for threshold fitting
-- ✅ Batch evaluation pipeline
-- ✅ Integration interfaces for crosscloud-ml and clinical-platform
-- 🔄 Layer-wise entropy analyzer (experimental, requires transformer internals access)
-- 🔄 Self-referencing score module
-- ⏸️ Attention entropy probe (future work)
+- ✅ Attention-based multi-family feature extraction (5 families)
+- ✅ Single-pass token-entropy scorer (`entropy_baselines.py`)
+- ✅ Isotonic calibration + Mahalanobis divergence (`calibrated_entropy_detector.py`)
+- ✅ Black-box top-K logprob detector (`blackbox_detector.py`)
+- ✅ Abstention / selective-prediction evaluation (`abstention.py`)
+- ✅ Stratified k-fold CV, bootstrap AUROC CIs, feature-family ablation
+- ✅ Adversarial robustness evaluation, embedding anomaly detection
+- 🔄 BiLSTM per-layer sequence model (experimental — underperforms the flat baseline)
 - ⏸️ Proposition-level hallucination localization
 
 ---
@@ -369,44 +327,18 @@ scorer.set_calibrator("calibrators/llama3-8b-factual.pkl")
   title     = {Language Model Hallucination Detection via Entropy Divergence},
   url       = {https://github.com/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence},
   year      = {2026},
-  note      = {Entropy-based uncertainty quantification for LLM hallucination detection at inference time}
+  note      = {Entropy-based uncertainty quantification and calibrated divergence for LLM hallucination detection at inference time}
 }
 ```
 
-**Related references:**
-```bibtex
-@inproceedings{malinin2018predictive,
-  author    = {Malinin, Andrey and Gales, Mark},
-  title     = {Predictive Uncertainty Estimation via Prior Networks},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
-  year      = {2018}
-}
-
-@inproceedings{gal2016dropout,
-  author    = {Gal, Yarin and Ghahramani, Zoubin},
-  title     = {Dropout as a {B}ayesian Approximation: Representing Model Uncertainty in Deep Learning},
-  booktitle = {Proceedings of the 33rd International Conference on Machine Learning (ICML)},
-  year      = {2016}
-}
-
-@inproceedings{kuhn2023semantic,
-  author    = {Kuhn, Lorenz and Gal, Yarin and Farquhar, Sebastian},
-  title     = {Semantic Entropy: Detecting Hallucinations in Large Language Models},
-  booktitle = {Proceedings of the 40th International Conference on Machine Learning (ICML)},
-  year      = {2023}
-}
-
-@article{shannon1948mathematical,
-  author  = {Shannon, Claude E.},
-  title   = {A Mathematical Theory of Communication},
-  journal = {Bell System Technical Journal},
-  volume  = {27},
-  number  = {3},
-  pages   = {379--423},
-  year    = {1948}
-}
-```
+See [`CITATION.cff`](CITATION.cff) for the machine-readable citation and [`paper/paper.tex`](paper/paper.tex) for the full writeup.
 
 ---
 
-*Uncertainty is not failure. Undetected uncertainty is. April 2026.*
+## License
+
+[MIT](LICENSE)
+
+---
+
+*Uncertainty is not failure. Undetected uncertainty is.*

@@ -7,31 +7,27 @@ abstains (refuses to answer) on the examples a detector flags as
 highest-risk, accuracy on the examples it does answer should improve as
 coverage (fraction answered) shrinks. This is the standard risk-coverage /
 selective-prediction evaluation, computed here on out-of-fold predictions
-from the same stratified k-fold splitting v2/pipeline.py already uses (to
+from the same stratified k-fold splitting pipeline.py already uses (to
 avoid the train/test leakage that a plain train/predict-on-train curve
 would have).
 
 Usage:
-    python v2/abstention.py --synthetic --num_samples 1000
-    python v2/abstention.py --halueval --num_samples 500 --detector logistic
+    python abstention.py --synthetic --num_samples 1000
+    python abstention.py --halueval --num_samples 500 --detector logistic
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, List, Tuple
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from v2.detector import HallucinationDetector, compute_auroc
-from v2.pipeline import generate_synthetic_dataset
+from detector import HallucinationDetector, compute_auroc
+from pipeline import generate_synthetic_dataset
 
 
 @dataclass
@@ -100,7 +96,7 @@ def area_under_risk_coverage(points: List[RiskCoveragePoint]) -> float:
     AURC: trapezoidal integral of accuracy over coverage, restricted to
     points with defined (non-NaN) accuracy, sorted by coverage ascending —
     mirrors the trapezoidal-integration style already used for AUROC in
-    v2/detector.py's compute_auroc.
+    detector.py's compute_auroc.
     """
     valid = [p for p in points if not np.isnan(p.accuracy)]
     if len(valid) < 2:
@@ -116,7 +112,7 @@ def _stratified_out_of_fold_probs(
     X: np.ndarray, y: np.ndarray, detector_factory: Callable[[], Any], k: int = 5, seed: int = 42
 ) -> np.ndarray:
     """Pooled out-of-fold probabilities via stratified k-fold, matching
-    v2/pipeline.py::stratified_kfold_cv's splitting logic (duplicated here in
+    pipeline.py::stratified_kfold_cv's splitting logic (duplicated here in
     reduced form since that function returns only the AUROC summary, not the
     raw pooled probabilities the risk-coverage curve needs)."""
     rng = np.random.default_rng(seed)
@@ -202,7 +198,7 @@ def _detector_factory_for(name: str) -> Callable[[], Any]:
     if name in ("logistic", "mlp"):
         return lambda: HallucinationDetector(classifier_type=name)
     if name == "calibrated":
-        from v2.calibrated_entropy_detector import CalibratedEntropyDetector
+        from calibrated_entropy_detector import CalibratedEntropyDetector
         return lambda: CalibratedEntropyDetector()
     raise ValueError(f"Unknown detector: {name!r}. Choose: logistic, mlp, calibrated")
 
@@ -220,9 +216,9 @@ def main():
     args = parser.parse_args()
 
     if args.halueval:
-        from v2.data_generator import DataGenerator
-        from v2.pipeline import extract_attention_from_model
-        from v2.feature_engineer import AttentionFeatureEngineer
+        from data_generator import DataGenerator
+        from pipeline import extract_attention_from_model
+        from feature_engineer import AttentionFeatureEngineer
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -262,7 +258,7 @@ def main():
     print(f"  Gain from abstention:          {result['headline_gain']:+.4f}")
     print(f"{'=' * 55}")
 
-    out_path = args.out or "v2/results/abstention_risk_coverage.csv"
+    out_path = args.out or "results/abstention_risk_coverage.csv"
     save_risk_coverage_table(result["points"], out_path)
     print(f"\nRisk-coverage table saved to {out_path}")
 

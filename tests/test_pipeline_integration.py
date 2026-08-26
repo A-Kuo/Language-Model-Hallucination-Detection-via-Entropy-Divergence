@@ -1,5 +1,5 @@
 """
-Tests for the Phase 5 generalizations in v2/pipeline.py:
+Tests for the Phase 5 generalizations in pipeline.py:
 stratified_kfold_cv's detector_factory param and ablation_study's families
 param. Uses only synthetic data (generate_synthetic_dataset) — no model
 download or network access required.
@@ -7,14 +7,14 @@ download or network access required.
 
 import numpy as np
 
-from v2.pipeline import (
+from pipeline import (
     generate_synthetic_dataset,
     stratified_kfold_cv,
     ablation_study,
     DEFAULT_ABLATION_FAMILIES,
 )
-from v2.detector import HallucinationDetector
-from v2.calibrated_entropy_detector import CalibratedEntropyDetector
+from detector import HallucinationDetector
+from calibrated_entropy_detector import CalibratedEntropyDetector
 
 
 def test_stratified_kfold_cv_classifier_type_still_works():

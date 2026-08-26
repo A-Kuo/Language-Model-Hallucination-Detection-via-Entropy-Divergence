@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hallucination-detection"
 version = "2.0.0"
-description = "LLM hallucination detection via attention pattern analysis"
+description = "LLM hallucination detection using single-pass entropy statistics and calibrated entropy divergence"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -55,8 +55,20 @@ Repository = "https://github.com/A-Kuo/Natural-Hallucination-Analysis"
 Issues = "https://github.com/A-Kuo/Natural-Hallucination-Analysis/issues"
 
 [tool.pytest.ini_options]
-testpaths = ["v1", "v2/tests"]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 
-[tool.setuptools.packages.find]
-include = ["v1*", "v2*"]
+[tool.setuptools]
+py-modules = [
+    "data_generator",
+    "detector",
+    "feature_engineer",
+    "entropy_baselines",
+    "calibrated_entropy_detector",
+    "blackbox_detector",
+    "abstention",
+    "pipeline",
+    "adversarial",
+    "embedding_anomaly",
+    "vertex_deploy",
+]

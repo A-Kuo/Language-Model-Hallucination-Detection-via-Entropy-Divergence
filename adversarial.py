@@ -24,7 +24,7 @@ Design rationale:
     English QA generalise to equivalent Spanish/French/German prompts?
 
 Usage:
-    from v2.adversarial import AdversarialEvaluator
+    from adversarial import AdversarialEvaluator
     evaluator = AdversarialEvaluator(detector, feature_engineer, model, tokenizer)
     results = evaluator.evaluate_all(samples)
     evaluator.print_report(results)
@@ -212,7 +212,7 @@ class AdversarialEvaluator:
 
     def _score_text(self, text: str) -> float:
         """Extract features from text and return hallucination probability."""
-        from v2.pipeline import extract_attention_from_model
+        from pipeline import extract_attention_from_model
         try:
             attentions, ctx_len = extract_attention_from_model(
                 text, self.model, self.tokenizer, self.device

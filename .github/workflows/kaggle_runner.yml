@@ -1,0 +1,42 @@
+name: Run Kaggle GPU Test & Retrieve Artifacts
+
+on:
+  push:
+    paths:
+      - 'notebooks/**'
+      - 'src/**'
+
+jobs:
+  kaggle-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Notebook on Kaggle GPU
+        uses: KevKibe/kaggle-script-action@v1
+        with:
+          username: ${{ secrets.KAGGLE_USERNAME }}
+          key: ${{ secrets.KAGGLE_KEY }}
+          title: "My PyTorch Test"
+          custom_script: |
+            import os
+            os.system("jupyter nbconvert --to notebook --execute notebooks/train_eval.ipynb --output output.ipynb")
+          enable_gpu: true
+
+      - name: Download Kaggle Output
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          pip install kaggle
+          mkdir -p notebooks/results
+          kaggle kernels output your-kaggle-username/my-pytorch-test -p notebooks/results/
+
+      - name: Commit Results to Repo
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add notebooks/results/
+          git commit -m "Automated update: GPU evaluation results [skip ci]" || exit 0
+          git push

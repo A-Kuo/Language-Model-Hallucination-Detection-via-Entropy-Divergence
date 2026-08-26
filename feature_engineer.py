@@ -5,11 +5,11 @@ Multi-Family Attention Feature Engineering
 Unifies five research-grade feature families for hallucination detection,
 each operating on raw attention tensors (L, H, T, T):
 
-    1. ENTROPY — Shannon entropy of attention distributions (our v1)
+    1. ENTROPY — Shannon entropy of attention distributions
     2. LOOKBACK RATIO — Context vs. generation attention (Chuang et al., EMNLP 2024)
     3. FREQUENCY DOMAIN — DFT high-frequency energy (Qi et al., 2026)
     4. SPECTRAL — Laplacian eigenvalues of attention-as-graph (Barbero et al.)
-    5. CROSS-LAYER KL — Divergence between consecutive layers (our v1)
+    5. CROSS-LAYER KL — Divergence between consecutive layers
 
 Each family extracts a fixed-size feature vector. Concatenated, they form
 the full feature vector for a lightweight classifier.
@@ -377,7 +377,7 @@ class AttentionFeatureEngineer:
         - Lookback Lens (Chuang et al., EMNLP 2024)
         - Frequency-Aware Attention (Qi et al., 2026)
         - Laplacian Eigenvalue features (Barbero et al., 2025)
-        - Our v1 entropy + KL divergence
+        - Foundational entropy + cross-layer KL divergence
     """
 
     # Feature sizes per family

@@ -1,9 +1,9 @@
-"""Tests for v2/entropy_baselines.py"""
+"""Tests for entropy_baselines.py"""
 
 import numpy as np
 import pytest
 
-from v2.entropy_baselines import (
+from entropy_baselines import (
     softmax,
     token_entropy,
     compute_entropy_baseline_features,

@@ -1,11 +1,11 @@
-"""Tests for v2/blackbox_detector.py"""
+"""Tests for blackbox_detector.py"""
 
 import os
 
 import numpy as np
 import pytest
 
-from v2.blackbox_detector import (
+from blackbox_detector import (
     TokenTopK,
     topk_entropy_lower_bound,
     topk_mass,
@@ -17,7 +17,7 @@ from v2.blackbox_detector import (
     FEATURE_NAMES,
     _HAS_OPENAI,
 )
-from v2.entropy_baselines import softmax, token_entropy
+from entropy_baselines import softmax, token_entropy
 
 
 def test_simulate_topk_entropy_is_lower_bound_of_full_entropy():

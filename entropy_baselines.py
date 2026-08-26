@@ -7,7 +7,7 @@ model's next-token output distribution (logits), as distinct from the
 attention-pattern features in feature_engineer.py. This is the family of
 signals the root README already describes conceptually (Shannon entropy of
 p_t over the vocabulary, perplexity) but that had never actually been
-implemented in code — everything in v2/ prior to this module operated on
+implemented in code — everything in this repo prior to this module operated on
 attention weights, not on the output token-probability distribution.
 
 These are single-pass (no multi-sample generation, no MC dropout) — cheap
@@ -169,7 +169,7 @@ class EntropyFeatureExtractor:
     Extracts single-pass token-entropy features from output logits.
 
     Mirrors AttentionFeatureEngineer's API shape (feature_dim, feature_names,
-    extract()) so it plugs into v2/pipeline.py symmetrically alongside the
+    extract()) so it plugs into pipeline.py symmetrically alongside the
     attention-based feature engineer.
     """
 

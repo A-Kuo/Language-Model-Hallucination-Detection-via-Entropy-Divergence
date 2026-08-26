@@ -1,6 +1,6 @@
 """
-End-to-End Pipeline — Hallucination Detection v2
-===================================================
+End-to-End Pipeline — Hallucination Detection
+=================================================
 
 Orchestrates the full workflow:
     1. Load labeled samples (from DataGenerator or file)
@@ -10,16 +10,16 @@ Orchestrates the full workflow:
 
 Usage:
     # Synthetic demo (no model or API needed)
-    python v2/pipeline.py --synthetic --num_samples 1000
+    python pipeline.py --synthetic --num_samples 1000
 
     # HaluEval benchmark (no API — pip install datasets)
-    python v2/pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m
+    python pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m
 
     # Full pipeline with self-generated data (requires ANTHROPIC_API_KEY)
-    python v2/pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m
+    python pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m
 
     # Save trained detector
-    python v2/pipeline.py --halueval --num_samples 500 --save detector.pkl
+    python pipeline.py --halueval --num_samples 500 --save detector.pkl
 """
 
 from __future__ import annotations
@@ -34,13 +34,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from v2.feature_engineer import AttentionFeatureEngineer, FeatureConfig
-from v2.detector import HallucinationDetector, BiLSTMDetector, DetectorMetrics
-from v2.entropy_baselines import EntropyFeatureExtractor
-from v2.calibrated_entropy_detector import CalibratedEntropyDetector
-from v2.blackbox_detector import BlackBoxEntropyDetector, simulate_topk_from_full_logits, extract_blackbox_features
+from feature_engineer import AttentionFeatureEngineer, FeatureConfig
+from detector import HallucinationDetector, BiLSTMDetector, DetectorMetrics
+from entropy_baselines import EntropyFeatureExtractor
+from calibrated_entropy_detector import CalibratedEntropyDetector
+from blackbox_detector import BlackBoxEntropyDetector, simulate_topk_from_full_logits, extract_blackbox_features
 
 
 # =========================================================================
@@ -603,7 +601,7 @@ def run_real_pipeline(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Hallucination Detection Pipeline v2")
+    parser = argparse.ArgumentParser(description="Hallucination Detection Pipeline")
     parser.add_argument("--synthetic",  action="store_true", help="Run on synthetic data (no model/API)")
     parser.add_argument("--halueval",   action="store_true", help="Use HaluEval benchmark (no API, needs: pip install datasets)")
     parser.add_argument("--num_samples", type=int, default=500)
@@ -613,12 +611,12 @@ def main():
     parser.add_argument("--save",       type=str, help="Save trained detector to this path")
     parser.add_argument("--load",       type=str, help="Load pre-trained detector")
     parser.add_argument("--abstention", action="store_true",
-                         help="Also run the abstention/selective-prediction experiment (see v2/abstention.py)")
+                         help="Also run the abstention/selective-prediction experiment (see abstention.py)")
 
     args = parser.parse_args()
 
     print(f"{'═' * 60}")
-    print(f"  HALLUCINATION DETECTION v2 — MULTI-FAMILY FEATURES")
+    print(f"  HALLUCINATION DETECTION — MULTI-FAMILY FEATURES")
     print(f"  Entropy · Lookback · Frequency · Spectral · Cross-Layer KL")
     print(f"{'═' * 60}\n")
 
@@ -632,7 +630,7 @@ def main():
             print(f"\nDetector saved to {args.save}")
 
         if args.abstention:
-            from v2.abstention import run_abstention_experiment, save_risk_coverage_table
+            from abstention import run_abstention_experiment, save_risk_coverage_table
             X, y = generate_synthetic_dataset(args.num_samples, args.seed)
             result = run_abstention_experiment(
                 X, y, detector_factory=lambda: HallucinationDetector(classifier_type="logistic"),
@@ -645,11 +643,11 @@ def main():
             print(f"  Baseline accuracy (100% cov.): {result['baseline_accuracy']:.4f}")
             print(f"  Accuracy @ {result['headline_coverage']:.0%} coverage:      {result['headline_accuracy']:.4f}")
             print(f"  Gain from abstention:          {result['headline_gain']:+.4f}")
-            save_risk_coverage_table(result["points"], "v2/results/abstention_risk_coverage.csv")
-            print(f"  Risk-coverage table saved to v2/results/abstention_risk_coverage.csv")
+            save_risk_coverage_table(result["points"], "results/abstention_risk_coverage.csv")
+            print(f"  Risk-coverage table saved to results/abstention_risk_coverage.csv")
 
     elif args.halueval:
-        from v2.data_generator import DataGenerator
+        from data_generator import DataGenerator
         print(f"Mode: HaluEval benchmark  (num_samples={args.num_samples}, no API required)")
         samples = DataGenerator.from_halueval(
             num_samples=args.num_samples,
@@ -658,10 +656,10 @@ def main():
         run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save)
         if args.abstention:
             print("\nFor an abstention/selective-prediction experiment on HaluEval data, run:")
-            print(f"  python v2/abstention.py --halueval --num_samples {args.num_samples} --model {args.model}")
+            print(f"  python abstention.py --halueval --num_samples {args.num_samples} --model {args.model}")
 
     elif args.data:
-        from v2.data_generator import DataGenerator
+        from data_generator import DataGenerator
         print(f"Mode: loading data from {args.data}")
         samples = DataGenerator.load(args.data)
         print(f"  Loaded {len(samples)} samples")
@@ -671,13 +669,13 @@ def main():
         print("Choose a data source:")
         print()
         print("  --synthetic          Fast demo, no model or API needed")
-        print("    python v2/pipeline.py --synthetic --num_samples 1000")
+        print("    python pipeline.py --synthetic --num_samples 1000")
         print()
         print("  --halueval           Real benchmark data, no API needed (pip install datasets)")
-        print("    python v2/pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m")
+        print("    python pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m")
         print()
         print("  --data <file.jsonl>  Your own labeled dataset")
-        print("    python v2/pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m")
+        print("    python pipeline.py --data data/train.jsonl --model EleutherAI/pythia-160m")
 
 
 if __name__ == "__main__":

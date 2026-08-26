@@ -39,14 +39,12 @@ weight (default 0.5).
 
 API matches HallucinationDetector's flat-vector contract exactly
 (fit/predict_proba/predict/evaluate/save/load), so it plugs directly into
-v2/pipeline.py's existing CV/ablation/bootstrap harness.
+pipeline.py's existing CV/ablation/bootstrap harness.
 """
 
 from __future__ import annotations
 
-import os
 import pickle
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -54,9 +52,7 @@ from typing import Callable, List, Optional
 import numpy as np
 from scipy.special import expit as sigmoid
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from v2.detector import DetectorMetrics, compute_classification_metrics
+from detector import DetectorMetrics, compute_classification_metrics
 
 EPS = 1e-12
 

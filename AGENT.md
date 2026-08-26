@@ -1,4 +1,4 @@
-# Agent Instructions — Hallucination Detection v2
+# Agent Instructions — Hallucination Detection
 
 Instructions for AI agents extending or maintaining this project.
 
@@ -6,7 +6,7 @@ Instructions for AI agents extending or maintaining this project.
 
 ## Research Foundations (Mathematical)
 
-### 1. Shannon Entropy (v1)
+### 1. Shannon Entropy
 ```
 H(a) = -Σ p(i) · log₂(p(i))
 ```
@@ -29,10 +29,26 @@ L = D - W     →     eigenvalues λ₁ ≤ λ₂ ≤ ... ≤ λ_T
 ```
 Fiedler value (λ₂) indicates graph connectivity; low λ₂ = bottlenecks.
 
-### 5. Cross-Layer KL (v1)
+### 5. Cross-Layer KL
 ```
 D_KL(layer_l || layer_{l+1}) = Σ p · log(p/q)
 ```
+
+### 6. Single-Pass Token Entropy — `entropy_baselines.py`
+```
+H_t = -Σ_v p_t(v) · log p_t(v)          (mean/max/std over the answer span)
+perplexity = exp(mean NLL of realized tokens)
+```
+Computed from output logits directly (white-box, no attention needed).
+
+### 7. Calibrated Entropy Divergence — `calibrated_entropy_detector.py`
+```
+p(x) = w · isotonic(u(x)) + (1-w) · sigmoid(a·mahalanobis(x, μ_ref, Σ_ref) + b)
+```
+`μ_ref`/`Σ_ref` are fit on the calibration set's correct-answer (y=0) examples only. This is the repo's main original contribution — see README.md's "Calibrated Entropy Divergence" section for the full rationale.
+
+### 8. Top-K Logprob Entropy (black-box) — `blackbox_detector.py`
+Same entropy/margin/mass estimators as (6), computed only from the small top-K logprob list a commercial completions API returns — a documented lower bound on true entropy, not an approximation.
 
 ---
 
@@ -40,13 +56,13 @@ D_KL(layer_l || layer_{l+1}) = Σ p · log(p/q)
 
 - **Local model**: Default `EleutherAI/pythia-160m` (EleutherAI, Apache 2.0). Any HuggingFace causal LM works: Llama, Mistral, Phi, etc.
 - **LLM-as-judge**: Claude (Anthropic API) for QA generation and answer labeling.
-- **No OpenAI dependencies**: The codebase does not use any OpenAI models or APIs.
+- **OpenAI**: optional, lazy-imported dependency used only by `blackbox_detector.py::fetch_topk_logprobs_openai()` for a live top-K logprob demo (requires `pip install openai` + `OPENAI_API_KEY`). Not required anywhere else — `simulate_topk_from_full_logits()` is the offline path everything else (including all tests) uses.
 
 ---
 
 ## Self-Data Pipeline
 
-Claude generates QA → local model answers → Claude judges (correct/hallucinated) → feature engineer extracts 18D → train classifier. Scales linearly with API budget.
+Claude generates QA → local model answers → Claude judges (correct/hallucinated) → feature engineer extracts 18D attention vector (+ 6D token-entropy vector via `entropy_baselines.py`) → train classifier. Scales linearly with API budget.
 
 ---
 
@@ -56,7 +72,7 @@ Batson et al. (2025) "On the Biology of a Large Language Model" identifies the c
 
 ### 1. We detect symptoms, not causes
 
-Hallucination is governed by a binary competition: **refusal-to-speculate circuit** vs. **known-entity detector**. Hallucinations occur when the known-entity circuit misfires. Our 5 feature families measure downstream attention patterns, not the circuit. A future v3 should probe refusal and known-entity circuits via activation probing (CLAP, arXiv:2509.09700).
+Hallucination is governed by a binary competition: **refusal-to-speculate circuit** vs. **known-entity detector**. Hallucinations occur when the known-entity circuit misfires. Our feature families (attention-based and entropy-based alike) measure downstream signals, not the circuit itself. A future iteration should probe refusal and known-entity circuits via activation probing (CLAP, arXiv:2509.09700).
 
 ### 2. Confident hallucination evades detection
 
@@ -76,11 +92,12 @@ The refusal/known-entity competition is a discrete switch. Our logistic regressi
 
 ## Extending This Work
 
-- Swap classifier (LogReg → MLP, or add ensemble)
 - Add feature families from CHARM, Multi-View Attention papers
 - Integrate activation probing for circuit-level signals
-- Domain-specific calibration from corpus
+- Fit per-domain `CalibratedEntropyDetector` instances rather than one global calibration
+- Investigate why BiLSTM underperforms logistic regression on per-layer sequences (see README's "Research Limitations")
 - Use larger local models (Llama-3, Mistral, Phi-3) for richer hallucination patterns
+- Semantic entropy / multi-sample UQ methods are deliberately out of scope here (this repo focuses on single-pass signals) — see `research/` digests for that track
 
 ---
 

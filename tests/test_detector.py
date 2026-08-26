@@ -1,5 +1,5 @@
 """
-Tests for v2/detector.py
+Tests for detector.py
 
 Covers the classifier_type misuse guards (fit/predict_proba/evaluate raising
 a clear ValueError instead of an AttributeError when classifier_type="bilstm",
@@ -11,7 +11,7 @@ pytest/CI instead of only on manual invocation.
 import numpy as np
 import pytest
 
-from v2.detector import HallucinationDetector, compute_classification_metrics, compute_auroc
+from detector import HallucinationDetector, compute_classification_metrics, compute_auroc
 
 try:
     import torch  # noqa: F401
