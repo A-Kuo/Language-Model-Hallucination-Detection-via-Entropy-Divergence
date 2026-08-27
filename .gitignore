@@ -40,11 +40,6 @@ token.json
 Thumbs.db
 desktop.ini
 
-# Jupyter
-.ipynb_checkpoints/
-# Note: *.ipynb is NOT ignored — colab/ notebooks are tracked
-# Only ignore checkpoint files
-
 # Model weights and checkpoints (large files)
 *.bin
 *.safetensors
