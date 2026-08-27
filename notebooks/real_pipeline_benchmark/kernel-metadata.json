@@ -1,0 +1,10 @@
+{
+  "id": "augustinekuo/real-pipeline-benchmark",
+  "title": "Real Pipeline Benchmark",
+  "code_file": "real_pipeline_benchmark.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_internet": "true"
+}

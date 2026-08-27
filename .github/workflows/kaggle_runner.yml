@@ -4,7 +4,16 @@ name: Kaggle GPU Run
 # fire automatically on push. Run it from the Actions tab ("Run workflow")
 # or `gh workflow run kaggle_runner.yml` when you deliberately want a run.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      kernel_dir:
+        description: "Which notebook/kernel to run"
+        required: true
+        default: "notebooks"
+        type: choice
+        options:
+          - "notebooks"
+          - "notebooks/real_pipeline_benchmark"
 
 permissions:
   contents: write
@@ -27,14 +36,14 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-        run: kaggle kernels push -p notebooks/
+        run: kaggle kernels push -p "${{ inputs.kernel_dir }}/"
 
       - name: Poll for completion
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          SLUG=$(python -c "import json; print(json.load(open('notebooks/kernel-metadata.json'))['id'])")
+          SLUG=$(python -c "import json; print(json.load(open('${{ inputs.kernel_dir }}/kernel-metadata.json'))['id'])")
           echo "Polling kernel: $SLUG"
           for i in $(seq 1 170); do
             OUTPUT=$(kaggle kernels status "$SLUG")
@@ -57,15 +66,21 @@ jobs:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          SLUG=$(python -c "import json; print(json.load(open('notebooks/kernel-metadata.json'))['id'])")
-          mkdir -p notebooks/results
-          kaggle kernels output "$SLUG" -p notebooks/results/
+          SLUG=$(python -c "import json; print(json.load(open('${{ inputs.kernel_dir }}/kernel-metadata.json'))['id'])")
+          if [ "${{ inputs.kernel_dir }}" = "notebooks" ]; then
+            DEST="notebooks/results"
+          else
+            DEST="notebooks/results/$(basename "${{ inputs.kernel_dir }}")"
+          fi
+          mkdir -p "$DEST"
+          kaggle kernels output "$SLUG" -p "$DEST"
+          echo "DEST=$DEST" >> "$GITHUB_ENV"
 
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add notebooks/results/
+          git add "$DEST"
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: Kaggle GPU run results"
+          git commit -m "chore: Kaggle GPU run results ($DEST)"
           git push

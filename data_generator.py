@@ -450,18 +450,24 @@ class DataGenerator:
         ds = load_dataset("pminervini/HaluEval", "qa_samples", split="data")
         print(f"  Loaded {len(ds)} rows from HaluEval.")
 
-        # Each row has one correct and one hallucinated answer — interleave both
+        # Current schema: one row = one (question, answer, hallucination) triple
+        # — 'knowledge' (context), 'question', 'answer', 'hallucination' ('yes'/'no').
+        # Each row already carries exactly one label, unlike an earlier version of
+        # this dataset that paired a right_answer/hallucinated_answer per question.
         rows = list(ds)
         rng.shuffle(rows)
+
+        hallucinated_rows = [r for r in rows if r["hallucination"] == "yes"]
+        correct_rows = [r for r in rows if r["hallucination"] == "no"]
 
         half = num_samples // 2
         samples: List[LabeledSample] = []
 
-        for row in rows[:half]:
+        for row in hallucinated_rows[:half]:
             samples.append(LabeledSample(
                 question=row["question"],
-                ground_truth=row["right_answer"],
-                model_answer=row["hallucinated_answer"],
+                ground_truth=row["answer"],
+                model_answer=row["answer"],
                 label="hallucinated",
                 domain="knowledge",
                 difficulty="medium",
@@ -469,11 +475,11 @@ class DataGenerator:
                 model_name="halueval_gpt3.5",
             ))
 
-        for row in rows[:half]:
+        for row in correct_rows[:half]:
             samples.append(LabeledSample(
                 question=row["question"],
-                ground_truth=row["right_answer"],
-                model_answer=row["right_answer"],
+                ground_truth=row["answer"],
+                model_answer=row["answer"],
                 label="correct",
                 domain="knowledge",
                 difficulty="medium",

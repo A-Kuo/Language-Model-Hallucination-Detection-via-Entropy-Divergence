@@ -29,6 +29,8 @@ import json
 import os
 import sys
 import time
+from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -50,19 +52,39 @@ def extract_attention_from_model(
     model,
     tokenizer,
     device: str = "cpu",
+    prompt: Optional[str] = None,
 ) -> Tuple[np.ndarray, int]:
     """
     Run a forward pass and extract attention tensors.
 
+    Parameters
+    ----------
+    text : str
+        Full text (prompt + answer) to run through the model.
+    prompt : str, optional
+        The prompt-only prefix (e.g. "Question: ...\\nAnswer:"). If given, it
+        is tokenized separately so the returned `context_length` is the true
+        prompt length. If omitted, `context_length` falls back to the full
+        `text`'s token count (previous behavior) — which is NOT the prompt
+        length and will make lookback-ratio features measure "attention to
+        the entire sequence" rather than "attention to context", so pass
+        `prompt` whenever the caller has it (see extract_logits_from_model,
+        which already does the same split for its own `answer_start`).
+
     Returns
     -------
     attentions : np.ndarray, shape (L, H, T, T)
-    context_length : int (based on input prompt length)
+    context_length : int
     """
     import torch
 
     inputs = tokenizer(text, return_tensors="pt").to(device)
-    context_length = inputs["input_ids"].shape[1]
+
+    if prompt is not None:
+        prompt_inputs = tokenizer(prompt, return_tensors="pt")
+        context_length = prompt_inputs["input_ids"].shape[1]
+    else:
+        context_length = inputs["input_ids"].shape[1]
 
     with torch.no_grad():
         outputs = model(**inputs)
@@ -301,7 +323,7 @@ def ablation_study(
     y: np.ndarray,
     feature_names: List[str],
     families: Optional[Dict[str, slice]] = None,
-):
+) -> Dict[str, Any]:
     """
     Feature family ablation: train with each family removed to measure
     its contribution.
@@ -313,6 +335,13 @@ def ablation_study(
         attention families (DEFAULT_ABLATION_FAMILIES); pass an extended
         dict (e.g. adding "entropy_token": slice(18, 24)) once X has been
         concatenated with additional feature blocks.
+
+    Returns
+    -------
+    Dict[str, Any]
+        {"full_auroc": float, "families": {name: {"auroc": float, "delta": float}}}
+        — the same numbers that get printed, for callers (e.g. run_real_pipeline's
+        results_path) that want to persist them instead of just reading the log.
     """
     families = families if families is not None else DEFAULT_ABLATION_FAMILIES
 
@@ -330,6 +359,8 @@ def ablation_study(
     print(f"  Full model ({X.shape[1]} features): AUROC = {full_auroc:.4f}")
     print(f"  {'─' * 46}")
 
+    results: Dict[str, Any] = {"full_auroc": full_auroc, "families": {}}
+
     for family, s in families.items():
         # Remove this family
         mask = np.ones(X.shape[1], dtype=bool)
@@ -341,10 +372,12 @@ def ablation_study(
         ablated_auroc = det.evaluate(X_ablated[split:], y[split:]).auroc
 
         delta = full_auroc - ablated_auroc
+        results["families"][family] = {"auroc": ablated_auroc, "delta": delta}
         direction = "↓" if delta > 0.001 else "→"
         print(f"  Without {family:<16}: AUROC = {ablated_auroc:.4f}  ({direction} {delta:+.4f})")
 
     print(f"{'═' * 50}")
+    return results
 
 
 # =========================================================================
@@ -424,13 +457,29 @@ def run_real_pipeline(
     model_name: str = "EleutherAI/pythia-160m",
     seed: int = 42,
     save_path: Optional[str] = None,
-) -> None:
+    results_path: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Run the full pipeline on pre-labeled LabeledSample objects.
 
     Used by both --halueval and --data modes. Loads the model once,
     extracts features for every non-ambiguous sample, trains both
     classifiers, runs ablation, and optionally saves the detector.
+
+    Parameters
+    ----------
+    results_path : str, optional
+        If given, write a JSON summary of every metric this function prints
+        (CV AUROC/CI per detector, held-out metrics, ablation deltas, feature
+        importance, dataset stats) to this path — lets a caller (e.g. a
+        notebook run on a GPU host) capture structured results instead of
+        only a console log.
+
+    Returns
+    -------
+    Dict[str, Any]
+        The same summary dict written to `results_path` (returned regardless
+        of whether `results_path` is given).
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -453,11 +502,13 @@ def run_real_pipeline(
     engineer = AttentionFeatureEngineer(context_length=32)
     entropy_extractor = EntropyFeatureExtractor()
 
-    # Extract features: attention families, token-entropy baselines, and
-    # black-box top-K features (the latter simulated from the same logits
-    # computed for entropy features — no extra forward pass needed).
+    # Extract features: attention families (flat + per-layer sequence for
+    # BiLSTM, from the SAME attentions tensor — one forward pass covers
+    # both, instead of extracting attention twice), token-entropy baselines,
+    # and black-box top-K features (simulated from the same logits computed
+    # for entropy features — no extra forward pass needed either).
     print(f"\nExtracting features for {len(clean)} samples...")
-    X_attn_list, X_entropy_list, X_blackbox_list, y_list = [], [], [], []
+    X_attn_list, X_entropy_list, X_blackbox_list, X_seq_list, y_list = [], [], [], [], []
     failed = 0
 
     for i, sample in enumerate(clean):
@@ -465,8 +516,9 @@ def run_real_pipeline(
             prompt = f"Question: {sample.question}\nAnswer:"
             text = f"{prompt} {sample.model_answer}"
 
-            attentions, context_len = extract_attention_from_model(text, model, tokenizer, device)
+            attentions, context_len = extract_attention_from_model(text, model, tokenizer, device, prompt=prompt)
             attn_feats = engineer.extract(attentions, context_len)
+            seq_feats = engineer.extract_layer_sequence(attentions)
 
             logits, token_ids, answer_start = extract_logits_from_model(
                 text, model, tokenizer, device, prompt=prompt
@@ -477,9 +529,16 @@ def run_real_pipeline(
             )
             blackbox_feats = extract_blackbox_features(topk_seq)
 
+            if not (
+                np.all(np.isfinite(attn_feats)) and np.all(np.isfinite(seq_feats))
+                and np.all(np.isfinite(entropy_feats)) and np.all(np.isfinite(blackbox_feats))
+            ):
+                raise ValueError("non-finite feature value (NaN/Inf) — dropping sample")
+
             X_attn_list.append(attn_feats)
             X_entropy_list.append(entropy_feats)
             X_blackbox_list.append(blackbox_feats)
+            X_seq_list.append(seq_feats)
             y_list.append(1.0 if sample.label == "hallucinated" else 0.0)
         except Exception as e:
             failed += 1
@@ -492,15 +551,19 @@ def run_real_pipeline(
     X_attn = np.array(X_attn_list)
     X_entropy = np.array(X_entropy_list)
     X_blackbox = np.array(X_blackbox_list)
+    X_seq_all = np.array(X_seq_list)
     X = np.hstack([X_attn, X_entropy])
     y = np.array(y_list)
     print(f"\nFeature matrix: {X.shape} (attention {X_attn.shape[1]} + entropy {X_entropy.shape[1]})   failed: {failed}")
     print(f"Labels: {int(y.sum())} hallucinated / {int((y == 0).sum())} correct")
 
-    # Train / evaluate — stratified k-fold
+    # Train / evaluate — stratified k-fold. X_seq_all is shuffled with the
+    # SAME permutation as X/y/X_blackbox (built in the same per-sample loop
+    # above, so indices already correspond 1:1 — no separate re-extraction
+    # or separate shuffle needed for the BiLSTM sequence path).
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(y))
-    X, y, X_blackbox = X[idx], y[idx], X_blackbox[idx]
+    X, y, X_blackbox, X_seq_all = X[idx], y[idx], X_blackbox[idx], X_seq_all[idx]
     split = int(0.7 * len(y))
     X_train, y_train = X[:split], y[:split]
     X_test, y_test   = X[split:], y[split:]
@@ -529,6 +592,13 @@ def run_real_pipeline(
     )
     print(f"  BlackBoxTopK    — AUROC: {bb_cv_auroc:.4f}  95% CI: [{bb_ci[0]:.4f}, {bb_ci[1]:.4f}]")
 
+    cv_summary = {
+        "logistic":           {"auroc": lr_cv_auroc,    "ci": list(lr_ci)},
+        "mlp":                {"auroc": mlp_cv_auroc,   "ci": list(mlp_ci)},
+        "calibrated_entropy": {"auroc": calib_cv_auroc, "ci": list(calib_ci)},
+        "blackbox_topk":      {"auroc": bb_cv_auroc,    "ci": list(bb_ci)},
+    }
+
     # Final held-out evaluation
     print(f"\nTraining on {split} / testing on {len(y) - split}...")
 
@@ -542,37 +612,26 @@ def run_real_pipeline(
     m_mlp = det_mlp.evaluate(X_test, y_test)
     print_metrics(m_mlp, "MLP (held-out)")
 
-    # BiLSTM on per-layer sequences
+    held_out_summary = {"logistic": asdict(m_lr), "mlp": asdict(m_mlp)}
+
+    # BiLSTM on per-layer sequences (reuses X_seq_all extracted above — no
+    # second forward pass, and no separate shuffle to keep in sync with y).
+    bilstm_summary = None
     try:
         import torch
-        print(f"\nExtracting per-layer sequences for BiLSTM...")
-        seq_list = []
-        for sample in clean:
-            try:
-                text = f"Question: {sample.question}\nAnswer: {sample.model_answer}"
-                attentions, ctx_len = extract_attention_from_model(text, model, tokenizer, device)
-                seq = engineer.extract_layer_sequence(attentions)
-                seq_list.append(seq)
-            except Exception:
-                seq_list.append(None)
-
-        valid_mask = [s is not None for s in seq_list]
-        X_seq = np.array([s for s in seq_list if s is not None])
-        y_seq = y[[i for i, v in enumerate(valid_mask) if v]]
-
-        idx_s = rng.permutation(len(y_seq))
-        X_seq, y_seq = X_seq[idx_s], y_seq[idx_s]
-        sp = int(0.7 * len(y_seq))
+        X_seq_train, y_seq_train = X_seq_all[:split], y[:split]
+        X_seq_test, y_seq_test = X_seq_all[split:], y[split:]
 
         bilstm_det = HallucinationDetector(classifier_type="bilstm", hidden_dim=32, epochs=60)
-        bilstm_det.fit_sequence(X_seq[:sp], y_seq[:sp])
-        m_bilstm = bilstm_det.evaluate_sequence(X_seq[sp:], y_seq[sp:])
+        bilstm_det.fit_sequence(X_seq_train, y_seq_train)
+        m_bilstm = bilstm_det.evaluate_sequence(X_seq_test, y_seq_test)
         print_metrics(m_bilstm, "BiLSTM (per-layer sequence, held-out)")
 
         # Bootstrap CI for BiLSTM
-        probs_bilstm = bilstm_det.predict_proba_sequence(X_seq[sp:])
-        bi_lo, bi_hi = bootstrap_auroc_ci(probs_bilstm, y_seq[sp:])
+        probs_bilstm = bilstm_det.predict_proba_sequence(X_seq_test)
+        bi_lo, bi_hi = bootstrap_auroc_ci(probs_bilstm, y_seq_test)
         print(f"  BiLSTM AUROC 95% CI: [{bi_lo:.4f}, {bi_hi:.4f}]")
+        bilstm_summary = {**asdict(m_bilstm), "ci": [bi_lo, bi_hi]}
 
     except ImportError:
         print("\n  BiLSTM skipped — PyTorch not available (pip install torch)")
@@ -588,7 +647,7 @@ def run_real_pipeline(
         bar = "█" * int(weight * 20)
         print(f"  {name:<28} {weight:.4f}  {bar}")
 
-    ablation_study(X, y, feature_names, families=ablation_families)
+    ablation_results = ablation_study(X, y, feature_names, families=ablation_families)
 
     if save_path:
         if m_bilstm and bilstm_det:
@@ -598,6 +657,29 @@ def run_real_pipeline(
             best = det_mlp if m_mlp.auroc >= m_lr.auroc else det_lr
             best.save(save_path)
             print(f"\nDetector saved to {save_path}")
+
+    summary: Dict[str, Any] = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "model_name": model_name,
+        "device": device,
+        "num_samples_total": len(samples),
+        "num_samples_used": len(y),
+        "num_failed": failed,
+        "num_hallucinated": int(y.sum()),
+        "num_correct": int((y == 0).sum()),
+        "cv_results": cv_summary,
+        "held_out": held_out_summary,
+        "bilstm": bilstm_summary,
+        "ablation": ablation_results,
+        "feature_importance_top10": dict(list(importance.items())[:10]),
+    }
+    if results_path:
+        Path(results_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(results_path, "w") as f:
+            json.dump(summary, f, indent=2)
+        print(f"\nResults summary saved to {results_path}")
+
+    return summary
 
 
 def main():
@@ -610,6 +692,7 @@ def main():
     parser.add_argument("--data",       type=str, help="Path to labeled JSONL file")
     parser.add_argument("--save",       type=str, help="Save trained detector to this path")
     parser.add_argument("--load",       type=str, help="Load pre-trained detector")
+    parser.add_argument("--results",    type=str, help="Write a JSON results summary to this path (--halueval/--data only)")
     parser.add_argument("--abstention", action="store_true",
                          help="Also run the abstention/selective-prediction experiment (see abstention.py)")
 
@@ -653,7 +736,7 @@ def main():
             num_samples=args.num_samples,
             seed=args.seed,
         )
-        run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save)
+        run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save, results_path=args.results)
         if args.abstention:
             print("\nFor an abstention/selective-prediction experiment on HaluEval data, run:")
             print(f"  python abstention.py --halueval --num_samples {args.num_samples} --model {args.model}")
@@ -663,7 +746,7 @@ def main():
         print(f"Mode: loading data from {args.data}")
         samples = DataGenerator.load(args.data)
         print(f"  Loaded {len(samples)} samples")
-        run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save)
+        run_real_pipeline(samples, model_name=args.model, seed=args.seed, save_path=args.save, results_path=args.results)
 
     else:
         print("Choose a data source:")

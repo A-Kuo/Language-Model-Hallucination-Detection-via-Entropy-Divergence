@@ -236,9 +236,13 @@ def main():
         X_list, y_list = [], []
         for sample in clean:
             try:
-                text = f"Question: {sample.question}\nAnswer: {sample.model_answer}"
-                attentions, ctx_len = extract_attention_from_model(text, model, tokenizer, device)
-                X_list.append(engineer.extract(attentions, ctx_len))
+                prompt = f"Question: {sample.question}\nAnswer:"
+                text = f"{prompt} {sample.model_answer}"
+                attentions, ctx_len = extract_attention_from_model(text, model, tokenizer, device, prompt=prompt)
+                feats = engineer.extract(attentions, ctx_len)
+                if not np.all(np.isfinite(feats)):
+                    continue
+                X_list.append(feats)
                 y_list.append(1.0 if sample.label == "hallucinated" else 0.0)
             except Exception:
                 continue

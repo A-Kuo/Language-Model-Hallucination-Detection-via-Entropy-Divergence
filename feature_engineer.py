@@ -579,13 +579,24 @@ class AttentionFeatureEngineer:
     @staticmethod
     def _to_numpy(attentions: Union[tuple, np.ndarray]) -> np.ndarray:
         """
-        Convert HuggingFace attention tuple to numpy (L, H, T, T).
+        Convert HuggingFace attention tuple to numpy (L, H, T, T), always in
+        float64.
 
         HuggingFace returns: tuple of L tensors, each (batch, H, T, T).
         We take batch[0] and stack into (L, H, T, T).
+
+        The float64 cast matters: models are commonly run in float16/float32,
+        and several entropy/KL computations in this module clip values to
+        within EPS=1e-12 of a boundary (e.g. `np.clip(x, EPS, 1.0 - EPS)`)
+        before taking a log. In float32, `1.0 - 1e-12` rounds back to exactly
+        `1.0` (float32's precision near 1.0 is ~1.2e-7), silently defeating
+        that clip and producing log(0) -> NaN whenever a ratio lands exactly
+        at a boundary (e.g. lookback ratio = 1.0 when the whole sequence is
+        attended-to as "context"). float64 has ~1e-16 precision near 1.0, so
+        the same clip actually works.
         """
         if isinstance(attentions, np.ndarray):
-            return attentions
+            return attentions.astype(np.float64, copy=False)
 
         # Tuple of tensors (HuggingFace format)
         layers = []
@@ -598,7 +609,7 @@ class AttentionFeatureEngineer:
                 arr = np.array(layer_attn[0])
             layers.append(arr)
 
-        return np.stack(layers)  # (L, H, T, T)
+        return np.stack(layers).astype(np.float64, copy=False)  # (L, H, T, T)
 
 
 # =========================================================================
