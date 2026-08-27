@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
-title: "Natural Hallucination Analysis"
+title: "Language Model Hallucination Detection via Entropy Divergence"
 abstract: >-
   LLM hallucination detection using single-pass entropy statistics and
   divergence from calibrated entropy distributions. Combines five
@@ -15,7 +15,7 @@ authors:
   - family-names: "Kuo"
     given-names: "A"
 license: MIT
-repository-code: "https://github.com/A-Kuo/Natural-Hallucination-Analysis"
+repository-code: "https://github.com/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence"
 keywords:
   - hallucination detection
   - attention analysis

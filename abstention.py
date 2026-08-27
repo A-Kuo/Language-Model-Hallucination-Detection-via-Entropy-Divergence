@@ -46,6 +46,12 @@ def _evaluate_threshold(probs: np.ndarray, y_true: np.ndarray, tau: float) -> Ri
     not hallucinated (y_true == 0). If nothing is answered, accuracy is
     reported as NaN by convention (nothing to be right or wrong about) —
     callers must not silently treat NaN as 0 or 1.
+
+    Formally, for threshold tau over N examples with scores p_i and labels
+    y_i:
+        answered(tau) = {i : p_i <= tau}
+        coverage(tau) = |answered(tau)| / N
+        accuracy(tau) = (1 / |answered(tau)|) * sum_{i in answered(tau)} 1[y_i = 0]
     """
     n = len(y_true)
     answered_mask = probs <= tau
@@ -97,6 +103,16 @@ def area_under_risk_coverage(points: List[RiskCoveragePoint]) -> float:
     points with defined (non-NaN) accuracy, sorted by coverage ascending —
     mirrors the trapezoidal-integration style already used for AUROC in
     detector.py's compute_auroc.
+
+        AURC = integral_0^1 accuracy(coverage) d(coverage)
+
+    A perfect detector that only abstains on genuine errors keeps
+    accuracy(coverage) = 1 all the way until coverage must include an actual
+    hallucination, giving AURC close to 1; a detector no better than random
+    abstention gives a roughly flat accuracy(coverage) curve near the
+    no-abstention baseline accuracy. Higher AURC is better — it summarizes
+    the whole risk-coverage tradeoff in one number, the same way AUROC
+    summarizes a whole ROC curve in one number.
     """
     valid = [p for p in points if not np.isnan(p.accuracy)]
     if len(valid) < 2:

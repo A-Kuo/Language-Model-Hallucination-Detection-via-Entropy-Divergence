@@ -83,10 +83,15 @@ class TokenTopK:
 def topk_entropy_lower_bound(top_logprobs: List[float]) -> float:
     """
     Entropy computed only over the observed top-k probabilities, renormalized
-    to sum to 1. This UNDERESTIMATES true entropy (ignores tail mass) — do
-    not treat it as an approximation of full entropy for diffuse
-    distributions; it is a lower bound, tightest when the true distribution
-    is already concentrated in the top-k.
+    to sum to 1:
+        p_hat_i = p_i / sum_{j=1}^{k} p_j     (i = 1, ..., k)
+        H^(k) = -sum_{i=1}^{k} p_hat_i * log(p_hat_i)
+    This UNDERESTIMATES true entropy H^(V) = -sum_{v in V} p_v log p_v
+    (ignores tail mass): H^(k) <= H^(V) always. Do not treat it as an
+    approximation of full entropy for diffuse distributions; it is a lower
+    bound, tightest when the true distribution is already concentrated in
+    the top-k. See README.md's "Top-K Logprob Entropy" section for a worked
+    numeric example of the gap size.
     """
     probs = np.exp(np.asarray(top_logprobs, dtype=float))
     probs = probs / (probs.sum() + EPS)
@@ -94,10 +99,14 @@ def topk_entropy_lower_bound(top_logprobs: List[float]) -> float:
 
 
 def topk_mass(top_logprobs: List[float]) -> float:
-    """Sum of exp(logprob) over the top-k — a concentration proxy. Close to
-    1 means confident/concentrated; low values mean much mass lies outside
-    the top-k (itself evidence of high true entropy, independent of the
-    lower-bound entropy estimate above)."""
+    """
+    Sum of exp(logprob) over the top-k — a concentration proxy:
+        mass^(k) = sum_{i=1}^{k} p_i
+    Close to 1 means confident/concentrated; low values mean much mass lies
+    outside the top-k (itself evidence of high true entropy, independent of
+    the lower-bound entropy estimate above — a low top-k mass is informative
+    even without knowing the shape of the unseen tail).
+    """
     return float(np.exp(np.asarray(top_logprobs, dtype=float)).sum())
 
 

@@ -106,6 +106,17 @@ def compute_lookback_features(
     features is as effective as a richer detector that utilizes the entire
     hidden states of an LLM."
 
+    `ratio_entropy` treats each head's ratio r^{l,h} as a Bernoulli parameter
+    (fraction of attention mass "voting" for context vs. generation) and
+    computes its binary entropy, averaged over all (layer, head) pairs:
+        ratio_entropy = mean_{l,h}[ -r^{l,h}·log2(r^{l,h}) - (1-r^{l,h})·log2(1-r^{l,h}) ]
+    This is 0 when every head agrees (all near-0 or all near-1 — consistent
+    grounding behavior across heads) and maximal (=1 bit) when heads are
+    split down the middle at r^{l,h}=0.5 — i.e. it measures *disagreement
+    between heads* about whether to ground in context, which a plain
+    mean/std of the ratios themselves would not distinguish from "heads that
+    all sit at exactly 0.5".
+
     Parameters
     ----------
     attentions : np.ndarray, shape (L, H, T, T)
@@ -166,11 +177,29 @@ def compute_frequency_features(
     over the key positions, then compute its DFT. High-frequency energy
     indicates rapid, unstable shifts in attention — a hallucination signal.
 
-    Mathematically:
-        X_k = Σ_{n=0}^{T-1} a_n · e^{-j2πkn/T}    (DFT)
-        E_high = Σ_{k=T/2}^{T-1} |X_k|²             (high-freq energy)
-        E_total = Σ_{k=0}^{T-1} |X_k|²              (Parseval's)
+    Mathematically (using np.fft.rfft — the non-redundant half-spectrum of a
+    real-valued signal, so k ranges over [0, T/2] rather than the full DFT's
+    [0, T-1]; the redundant conjugate-symmetric half carries no extra
+    information for a real input, so this is a size optimization, not an
+    approximation):
+        X_k = Σ_{n=0}^{T-1} a_n · e^{-j2πkn/T}    (DFT, k = 0, ..., T/2)
+        E_high = Σ_{k=T/4}^{T/2} |X_k|²             (high-freq energy: upper
+                                                        half of the rfft output)
+        E_total = Σ_{k=0}^{T/2} |X_k|²              (Parseval's)
         ratio = E_high / E_total                      (instability metric)
+
+    The two returned features not shown above:
+        spectral_centroid = Σ_k k·|X_k|² / E_total
+            The energy-weighted mean frequency — "where" the signal's energy
+            is concentrated along the frequency axis (low centroid = mostly
+            smooth/low-frequency attention; high centroid = energy shifted
+            toward rapid, jittery attention changes across key positions).
+        spectral_entropy  = -Σ_k p_k·log2(p_k),  p_k = |X_k|²/E_total
+            Shannon entropy of the normalized power spectrum — how *spread*
+            the energy is across frequencies, independent of where its
+            centroid sits (a signal with two energy spikes at opposite ends
+            of the spectrum can have a "central" centroid yet high spectral
+            entropy, which centroid alone would miss).
 
     Parameters
     ----------
@@ -239,14 +268,29 @@ def compute_spectral_features(
     derived from attention maps serve as good predictors of hallucinations."
 
     Treating each layer's mean-over-heads attention matrix as a weighted
-    adjacency graph:
+    adjacency graph (note: `Lap` below, never `L` — `L` is reserved
+    module-wide for "number of layers", see the module docstring; the code
+    variable is named `Lap` for exactly this reason):
         W = mean_h(A^{l,h})               (T × T adjacency)
         D = diag(W · 1)                   (degree matrix)
-        L = D - W                          (unnormalised Laplacian)
+        Lap = D - W                        (unnormalised Laplacian)
         λ_1 ≤ λ_2 ≤ ... ≤ λ_T            (Laplacian spectrum)
 
     λ₂ (Fiedler value / algebraic connectivity) indicates how well-connected
     the attention graph is. Low λ₂ → bottlenecks → fragmented attention.
+
+    The two features not shown above:
+        spectral_gap = λ_2 / λ_max
+            Normalized Fiedler value — how connected the graph is *relative
+            to its own largest eigenvalue*, making the statistic comparable
+            across layers/samples whose overall attention magnitude differs
+            (raw λ_2 alone conflates "well connected" with "small overall
+            attention weights").
+        laplacian_energy = Σ_i |λ_i - mean(degree)|
+            Total deviation of the spectrum from the mean node degree — a
+            single scalar summarizing how far the whole eigenvalue spectrum
+            (not just λ_2) departs from what a regular, evenly-connected
+            graph would produce.
 
     Parameters
     ----------

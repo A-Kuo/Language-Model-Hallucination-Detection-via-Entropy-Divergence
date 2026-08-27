@@ -66,3 +66,7 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+
+AGENT.md
+
+paper/PAPER_ROADMAP.md

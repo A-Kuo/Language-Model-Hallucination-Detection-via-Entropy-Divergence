@@ -40,6 +40,25 @@ weight (default 0.5).
 API matches HallucinationDetector's flat-vector contract exactly
 (fit/predict_proba/predict/evaluate/save/load), so it plugs directly into
 pipeline.py's existing CV/ablation/bootstrap harness.
+
+Why isotonic regression (Stage A) instead of Platt scaling (fitting a
+logistic sigmoid to u(x))? Platt scaling assumes the true calibration curve
+*is* a sigmoid; isotonic regression only assumes it's monotonic and fits the
+best monotonic step function via PAV, so it can represent calibration
+curves a fixed sigmoid cannot (e.g. flat through a low-entropy "confidently
+correct" region, then steep past some threshold) — at the cost of more
+degrees of freedom, which is part of why the final score blends it with a
+second, more constrained parametric term rather than relying on it alone.
+
+Why Mahalanobis distance (Stage B) instead of Euclidean? Euclidean distance
+in raw feature space implicitly assumes every feature is equally scaled and
+uncorrelated; Mahalanobis whitens by the reference covariance, so a point
+far from the mean along a direction correct answers naturally vary a lot
+along is treated as less anomalous than the same raw distance along a
+tightly-clustered direction. See mahalanobis_distance() below for the
+formula, and README.md's "Calibrated Entropy Divergence" section for the
+full worked-out justification (including the chi-squared connection behind
+the shrinkage regularization in fit_reference_distribution()).
 """
 
 from __future__ import annotations
@@ -86,6 +105,14 @@ def isotonic_regression(x: np.ndarray, y: np.ndarray) -> "IsotonicPredictor":
     pool-adjacent-violators algorithm (PAV), then return a predictor that
     linearly interpolates between fitted knots for new x values (clipped to
     the boundary y-values outside the training x range).
+
+    Formally, PAV solves the constrained least-squares problem
+        minimize   sum_i (y_i - f(x_i))^2
+        subject to f(x_1) <= f(x_2) <= ... <= f(x_N)   (x sorted ascending)
+    This is exactly the loosest calibration assumption possible (just
+    "does not decrease"), which is the point — see the module docstring for
+    why that's preferred here over assuming a specific parametric shape
+    (e.g. Platt's sigmoid).
 
     Parameters
     ----------
@@ -138,6 +165,20 @@ def fit_reference_distribution(X_ref: np.ndarray, shrinkage: float = 0.1):
     Fit mean and diagonal-shrinkage-regularized covariance from reference
     (correct-answer) examples.
 
+    The empirical covariance Sigma_emp = cov(X_ref) can be near-singular
+    when the feature dimension D approaches the number of reference examples
+    N (a real risk on small calibration splits). Shrinkage pulls it toward
+    its own diagonal, a well-conditioned target:
+        Sigma_shrunk = (1 - alpha) * Sigma_emp + alpha * diag(Sigma_emp)
+    where alpha = `shrinkage`. At alpha=1 this reduces to treating every
+    feature as independent (diagonal-only covariance); at alpha=0 it's the
+    plain empirical covariance. This is the regularization that keeps the
+    Mahalanobis distance below well-defined even in the D approx N regime —
+    see README.md's "Calibrated Entropy Divergence" section for why
+    Mahalanobis (which this covariance feeds) was chosen over Euclidean
+    distance in the first place, including the chi-squared connection that
+    explains why the *scale* of Mahalanobis distances grows with D.
+
     Returns
     -------
     mu : np.ndarray, shape (D,)
@@ -163,7 +204,22 @@ def fit_reference_distribution(X_ref: np.ndarray, shrinkage: float = 0.1):
 
 
 def mahalanobis_distance(X: np.ndarray, mu: np.ndarray, sigma_inv: np.ndarray) -> np.ndarray:
-    """Mahalanobis distance of each row of X to (mu, sigma_inv). Returns (N,)."""
+    """
+    Mahalanobis distance of each row of X to the reference distribution
+    (mu, sigma_inv):
+        d_M(x) = sqrt( (x - mu)^T * sigma_inv * (x - mu) )
+    Unlike Euclidean distance ||x - mu||, this accounts for the reference
+    distribution's covariance — a displacement along a direction the
+    reference set naturally varies a lot along counts for less than the
+    same raw displacement along a tightly-clustered direction. Under the
+    null hypothesis that x is drawn from the same distribution as the
+    reference set, d_M(x)^2 is chi-squared distributed with D degrees of
+    freedom (D = feature dimension), which is why the distance's scale
+    itself grows roughly as sqrt(D) — relevant if comparing raw Mahalanobis
+    values across feature sets of different dimensionality.
+
+    Returns (N,).
+    """
     diff = X - mu
     return np.sqrt(np.einsum("ij,jk,ik->i", diff, sigma_inv, diff).clip(min=0))
 

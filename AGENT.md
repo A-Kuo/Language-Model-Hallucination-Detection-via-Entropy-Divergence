@@ -6,9 +6,11 @@ Instructions for AI agents extending or maintaining this project.
 
 ## Research Foundations (Mathematical)
 
+Compressed reference — full derivations, "why this over alternatives" reasoning, and a defined notation table are in [README.md's "Mathematical Approach"](README.md#mathematical-approach). Notation here matches the README: `L` = number of layers, `H` = heads per layer, `T` = sequence length, `a` = an attention distribution (never the Laplacian — see item 4).
+
 ### 1. Shannon Entropy
 ```
-H(a) = -Σ p(i) · log₂(p(i))
+H(a) = -Σ_i a_i · log₂(a_i)
 ```
 
 ### 2. Lookback Ratio — Chuang et al., EMNLP 2024
@@ -25,9 +27,9 @@ Hallucinated tokens show high-frequency energy = fragmented grounding.
 
 ### 4. Spectral / Laplacian — Barbero et al.
 ```
-L = D - W     →     eigenvalues λ₁ ≤ λ₂ ≤ ... ≤ λ_T
+Lap = D - W     →     eigenvalues λ₁ ≤ λ₂ ≤ ... ≤ λ_T
 ```
-Fiedler value (λ₂) indicates graph connectivity; low λ₂ = bottlenecks.
+(`Lap`, not `L` — `L` is reserved for layer count everywhere in this repo; `feature_engineer.py`'s own variable is named `Lap` for the same reason.) Fiedler value (λ₂) indicates graph connectivity; low λ₂ = bottlenecks.
 
 ### 5. Cross-Layer KL
 ```

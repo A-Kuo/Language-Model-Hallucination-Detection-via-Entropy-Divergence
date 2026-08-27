@@ -205,15 +205,28 @@ class EmbeddingAnomalyDetector:
         # Centroid distance (L2 from correct-answer centroid)
         centroid_dist = float(np.linalg.norm(emb - self._correct_centroid))
 
-        # Mahalanobis distance from correct-answer distribution
+        # Mahalanobis distance from correct-answer distribution — same
+        # formula and rationale as calibrated_entropy_detector.py's
+        # mahalanobis_distance() (see that file's docstring for the full
+        # "why Mahalanobis over Euclidean" argument; not re-derived here to
+        # avoid documenting the same math twice).
         diff = emb - self._correct_centroid
         mahal = float(np.sqrt(np.maximum(diff @ self._correct_cov_inv @ diff, 0)))
 
-        # Normalise mahal (empirically ~N(0, dim) under null)
+        # Normalise mahal by sqrt(dim): under the null hypothesis that emb is
+        # drawn from the fitted correct-answer distribution, mahal^2 is
+        # chi-squared distributed with `dim` degrees of freedom, and
+        # E[chi-squared_dim] = dim — so the distance itself scales roughly as
+        # sqrt(dim) regardless of how many embedding dimensions there are.
+        # Dividing by sqrt(dim) puts "distance in standard chi-squared units"
+        # on a comparable [0, ~1+] scale before the final clip.
         dim = len(emb)
         mahal_norm = float(np.clip(mahal / np.sqrt(dim), 0, 1))
 
-        # Centroid distance: normalise by median expected distance
+        # Centroid distance: normalise by an empirical scale constant (5.0),
+        # unlike mahal_norm above this has no distributional derivation —
+        # it's a heuristic threshold, tuned to the embedding model's typical
+        # L2-distance range, not a statistically principled normalization.
         centroid_norm = float(np.clip(centroid_dist / 5.0, 0, 1))
 
         combined = (

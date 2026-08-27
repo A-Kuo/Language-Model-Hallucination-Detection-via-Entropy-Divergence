@@ -136,6 +136,20 @@ class SimpleMLP:
 
     Slightly more expressive than logistic regression, captures
     nonlinear interactions between feature families.
+
+    Forward pass, for input x and weights (W1, b1, W2, b2):
+        h = ReLU(x W1 + b1)              # hidden activations
+        z = h W2 + b2                    # output logit
+        p = sigmoid(z) = P(hallucination)
+    trained on the same L2-regularized binary cross-entropy loss as
+    LogisticRegression above:
+        L = -1/N * sum_i [y_i log(p_i) + (1-y_i) log(1-p_i)] + lambda*(||W1||^2 + ||W2||^2)
+    Gradients are hand-derived via the chain rule (see fit()) rather than
+    using autodiff, to keep this file numpy-only:
+        dL/dz  = p - y                                  # (N,)
+        dL/dW2 = h^T (p-y) / N + 2*lambda*W2
+        dL/dh  = (p-y) outer W2, masked to 0 where h <= 0  # ReLU'(pre-activation)
+        dL/dW1 = x^T dL/dh / N + 2*lambda*W1
     """
 
     def __init__(
@@ -216,11 +230,22 @@ class BiLSTMHallucinationNet(nn.Module if _HAS_TORCH else object):
         BiLSTM: 2 stacked layers, hidden_dim units per direction
         Output head: Linear(2 * hidden_dim → 1) → sigmoid
 
-    Why BiLSTM over flat features:
+    Why BiLSTM over flat features (the hypothesis, not yet confirmed — see
+    module docstring: logistic regression currently wins on HaluEval):
         Global summary stats (18D) discard the ordering of layers. A BiLSTM
         reads the sequence forward (syntactic → semantic) and backward
         (semantic → syntactic), capturing how hallucination-related uncertainty
-        evolves across model depth. This is the primary classifier architecture.
+        evolves across model depth.
+
+    Output formula: the final forward-direction hidden state h_L^right (after
+    reading layer 1 -> L) is concatenated with the final backward-direction
+    hidden state h_1^left (after reading layer L -> 1), then passed through
+    a linear head and sigmoid:
+        y_hat = sigmoid(W [h_L^right ; h_1^left] + b)
+    Concatenating both directions' *final* states (rather than, say, only
+    the forward direction's) is what lets the network use "what the
+    sequence looked like read start-to-end" and "what it looked like read
+    end-to-start" as two independent pieces of evidence for one prediction.
     """
 
     def __init__(
@@ -411,7 +436,20 @@ class DetectorMetrics:
 
 
 def compute_auroc(probs: np.ndarray, labels: np.ndarray) -> float:
-    """Compute AUROC via trapezoidal integration of the ROC curve."""
+    """
+    Compute AUROC via trapezoidal integration of the ROC curve (sweep a
+    threshold, plot TPR vs FPR, integrate the area underneath).
+
+    This is mathematically equivalent (up to tie-handling) to the
+    Mann-Whitney U estimator pipeline.py::stratified_kfold_cv uses instead:
+        AUROC = (1 / (n_pos * n_neg)) * sum_{i in pos, j in neg} 1[score_i > score_j]
+    i.e. AUROC *is* the probability that a randomly chosen hallucinated
+    example scores higher than a randomly chosen correct one — the ROC
+    integral is a geometric restatement of exactly that same probability.
+    Neither is "more correct"; this repo uses both intentionally, since
+    getting the same number from a geometric argument and a ranking
+    argument is a good way to build confidence both are implemented right.
+    """
     sorted_idx = np.argsort(-probs)
     sorted_labels = labels[sorted_idx]
 
