@@ -388,10 +388,11 @@ A small local model (Pythia-160m by default) answers questions live — some cor
 ├── tests/                          # pytest suite, one file per module
 ├── notebooks/                      # Kaggle/Colab experiment notebooks (see §6.3 for status)
 ├── demo/                           # Streamlit live demo (see §6.4)
-│   └── requirements.txt            # streamlit + torch (CPU wheel) + transformers + datasets
+│   └── requirements.txt            # self-contained: numpy/scipy + streamlit + torch (CPU wheel) + transformers + datasets
 ├── paper/                          # arXiv paper source (paper.tex, references.bib)
 ├── results/                        # Committed benchmark JSON (see §5)
 ├── AGENT.md                        # Design notes, math reference, known limitations
+├── runtime.txt                     # pins Python 3.11 for Streamlit Cloud (wheel availability, see demo/README.md)
 └── requirements.txt
 ```
 
