@@ -18,7 +18,7 @@ per-layer sequence bidirectionally (forward: early → late layers, backward:
 late → early), on the hypothesis that cross-layer dynamics matter more than
 global summary stats. On HaluEval with Pythia-160m this hypothesis has not
 yet paid off empirically: LogReg achieves ~0.91 AUROC vs ~0.78 for the
-current simplified BiLSTM (see paper.tex and COLABS.md for full numbers).
+current simplified BiLSTM (see README.md §5.1 and paper.tex for full numbers).
 Use classifier_type="logistic" as the default/primary choice unless doing
 sequence-model research.
 

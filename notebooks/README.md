@@ -7,13 +7,10 @@
 | `pytorch_dl_testbed.ipynb` | **Working** | Synthetic sandbox — a controllable pseudo-LM, no repo-module imports. Fast, cheap way to test architecture/signal-design hypotheses before touching real code. |
 | `real_pipeline_benchmark/real_pipeline_benchmark.ipynb` | **Working** | Clones the repo and calls the **real** `pipeline.py::run_real_pipeline()` against real HaluEval data and a real HuggingFace model. Every number it produces is a genuine benchmark of the actual detectors, at a scale (bigger model, more samples) that isn't practical on a laptop CPU. |
 | `full_pipeline.ipynb` | Working | Claude-labeled data generation → features → classifier. Needs `ANTHROPIC_API_KEY`. |
-| `gpu_benchmark.ipynb` | **Broken** | Generated `results/benchmark_results.json`. Imports the removed `run_experiment.py`. |
-| `ablation_study.ipynb` | **Broken** | Generated `results/ablation_results.json`. Same broken import. |
-| `quick_cpu_validation.ipynb` | **Broken** | Same broken import. |
 
-The three broken notebooks date from when the repo had a standalone `run_experiment.py` module, removed during consolidation. They produced the numbers in `results/*.json` (see README §5) but will not run as-is — they need porting to the current `pipeline.py` / `detector.py` API, or retiring in favor of `real_pipeline_benchmark`.
+Three other notebooks (`gpu_benchmark.ipynb`, `ablation_study.ipynb`, `quick_cpu_validation.ipynb`) that used to live here have been removed — they were thin wrappers around a standalone `run_experiment.py` module deleted during consolidation, with no algorithmic content of their own (the current 5-family pipeline strictly supersedes the two-signal feature set they exercised). The numbers they produced (`results/benchmark_results.json`, `results/ablation_results.json`) remain committed as the historical record — see README §5.2.
 
-The two working kernels can be run locally/Colab (the synthetic one; the real-pipeline one needs GPU+internet to be worth it), manually on Kaggle, or via the GitHub Actions Kaggle GPU workflow below.
+The three working notebooks above can be run locally/Colab (the synthetic sandbox and full-pipeline notebooks; the real-pipeline one needs GPU+internet to be worth it), manually on Kaggle, or via the GitHub Actions Kaggle GPU workflow below.
 
 ## The Kaggle GPU loop
 

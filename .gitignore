@@ -71,4 +71,9 @@ htmlcov/
 coverage.xml
 *.cover
 
+paper/OUTLINE.md
 paper/PAPER_ROADMAP.md
+
+# Demo build artifacts (reproducible via demo/build_detector.py)
+demo/detector.pkl
+AGENT.md

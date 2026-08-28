@@ -151,6 +151,46 @@ def extract_logits_from_model(
     return logits, token_ids, answer_start
 
 
+def build_prompt_and_text(tokenizer, question: str, answer: str) -> Tuple[str, str]:
+    """
+    Build the (prompt, full_text) pair fed to extract_attention_from_model /
+    extract_logits_from_model, branching on whether `tokenizer` has a chat
+    template.
+
+    Base models (e.g. Pythia) have no chat_template and were pretrained on
+    raw completion text, so a plain "Question: ...\\nAnswer: ..." string is
+    on-distribution for them. Instruct-tuned models (e.g. Qwen2.5-Instruct)
+    are fine-tuned specifically to expect their own chat-formatted prompt
+    (special tokens marking turns/roles); feeding them the base-model-style
+    string instead would put every attention/entropy feature this repo
+    extracts off-distribution — the model would be "confused" by the input
+    format itself, which is a different effect than genuine hallucination
+    uncertainty and would contaminate any comparison between the two model
+    types. Detecting the chat template and branching here (once, at the
+    prompt-construction call site) keeps extract_attention_from_model and
+    extract_logits_from_model themselves model-agnostic — they already just
+    take whatever `prompt`/`text` strings they're given.
+
+    Returns
+    -------
+    prompt : str
+        The prompt-only prefix (pass to `prompt=` in extract_*_from_model).
+    text : str
+        prompt + answer (pass as `text` in extract_*_from_model).
+    """
+    if getattr(tokenizer, "chat_template", None):
+        prompt = tokenizer.apply_chat_template(
+            [{"role": "user", "content": question}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        text = prompt + answer
+    else:
+        prompt = f"Question: {question}\nAnswer:"
+        text = f"{prompt} {answer}"
+    return prompt, text
+
+
 # =========================================================================
 # Synthetic data generation (no model needed)
 # =========================================================================
@@ -513,8 +553,7 @@ def run_real_pipeline(
 
     for i, sample in enumerate(clean):
         try:
-            prompt = f"Question: {sample.question}\nAnswer:"
-            text = f"{prompt} {sample.model_answer}"
+            prompt, text = build_prompt_and_text(tokenizer, sample.question, sample.model_answer)
 
             attentions, context_len = extract_attention_from_model(text, model, tokenizer, device, prompt=prompt)
             attn_feats = engineer.extract(attentions, context_len)

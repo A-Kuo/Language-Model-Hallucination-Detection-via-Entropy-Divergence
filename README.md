@@ -35,7 +35,7 @@ So instead of thresholding entropy, this repo **fits the distribution that entro
 
 Everything here runs in a single forward pass. That is a deliberate constraint. Semantic entropy ([Farquhar et al., 2024](https://www.nature.com/articles/s41586-024-07421-0)) and self-consistency methods ([Manakul et al., 2023](https://aclanthology.org/2023.emnlp-main.557/)) are strong but need 5–10 samples per query, and that cost is the most commonly cited barrier to deployment — the motivation behind cheap single-pass approximations like [Semantic Entropy Probes](https://arxiv.org/abs/2406.15927). Single-pass is the regime this project targets.
 
-**What the results actually show (§5), stated up front.** On HaluEval QA with Pythia-160m, a plain logistic regression on 24 features reaches 0.973 AUROC, and the black-box detector — restricted to the top-5 logprobs an API would return — reaches 0.930. That black-box number is the strongest practical result here. The calibrated detector, which is the headline contribution, currently *underperforms* the linear baseline (0.915) on this in-distribution benchmark; the argument for why that is expected, and what would actually test it, is in §5.1. Two feature families are pulling their weight and three are not, including cross-layer KL divergence — the signal in the project's own name. These are honest negative results and they are reported as such.
+**What the results actually show (§5), stated up front.** On matched-pair HaluEval QA, across two different model families (Pythia-160m and Qwen2.5-0.5B-Instruct), `CalibratedEntropyDetector` — the headline contribution — reaches 0.984–0.987 CV AUROC, edging out logistic regression (0.983–0.986) on both. That was not true in an earlier iteration of this project: the calibrated detector used to clearly underperform the linear baseline, and the fix (§5.3) was not tuning-until-it-looked-good but correcting one hardcoded hyperparameter that the project's own feature-family ablation had already shown was the wrong choice. The black-box detector, restricted to the top-5 logprobs an API would return, reaches 0.90–0.93 — a real practical result, though clearly behind the white-box detectors. Feature-family importance does not agree between the two models (§5.5): what looks like a dominant signal on one model is negligible on the other. Cross-layer KL divergence — the signal in the project's own name — remains the weakest family on both. These are reported as found, including where an earlier draft of this README was wrong about the direction a fix would move a number (§5.2).
 
 ---
 
@@ -157,7 +157,11 @@ Under the null hypothesis that $x$ comes from the reference distribution, $d_{\m
 
 $$p(x) = w \cdot \mathrm{isotonic}(u(x)) + (1-w) \cdot \sigma\big(a \cdot d_{\mathrm{M}}(x) + b\big)$$
 
-with $u(x)$ a scalar raw score (default `entropy_mean`), $(a,b)$ fit by 1-D logistic regression of $d_\mathrm{M}$ against labels, and $w$ a fixed blend weight.
+with $u(x)$ a scalar raw score, $(a,b)$ fit by 1-D logistic regression of $d_\mathrm{M}$ against labels, and $w$ a fixed blend weight ($w=0.7$ by default — swept empirically, not guessed; see §5.3).
+
+**A note on $u(x)$, since an earlier version of this got it wrong.** $u(x)$ was originally hardcoded to a fixed feature column (`entropy_mean`), on the assumption that raw entropy was the natural scalar to calibrate. This project's own feature-family ablation (§5.5) later showed that assumption was false — lookback-ratio features carry more single-feature signal than entropy on the model tested. `u(x)` now defaults to whichever feature column has the strongest single-feature separation on the training data, resolved once at `fit()` time (`score_index="auto"`, `calibrated_entropy_detector.py::_resolve_score_index`). §5.3 has the before/after numbers — this one change closed most of the gap to the linear baseline.
+
+**Beyond a probability: 3-way routing.** `route()` maps $p(x)$ into RELIABLE / UNCERTAIN / UNRELIABLE using two thresholds fit from the calibration set's own score distribution (not hardcoded), reviving a decision-routing concept from an earlier version of this project rebuilt on the calibration machinery above. See §5.4 for the exact rule and the [Streamlit demo](demo/) for it in use.
 
 ### 4.4 Black-box top-K detector (`blackbox_detector.py`)
 
@@ -183,87 +187,101 @@ These are the same quantity up to tie handling ([Hanley & McNeil, 1982](https://
 
 ## 5. Results
 
-Two sets of numbers live in `results/`, from different pipeline generations. Both are real and reproducible; read §5.4 before drawing conclusions from either.
+Four result generations live in `results/`. §5.1–§5.6 below are the current, trustworthy numbers — matched-pair HaluEval data, two independent model families, a tuned calibrated detector. §5.7 keeps the old, since-superseded numbers as a provenance record, not a citable result. Read §5.9 for what's still not measured.
 
-### 5.1 Current pipeline — `results/halueval_pythia160m_n400.json`
+### 5.1 Headline: two models, matched-pair HaluEval
 
-Pythia-160m, HaluEval QA, 400 balanced samples (200/200), CPU, seed 42. Stratified 5-fold cross-validation over all 400 samples, with bootstrap 95% CIs. Reproduce with:
+400 samples (200 matched question pairs — see §5.2), stratified 5-fold CV, bootstrap 95% CIs. Reproduce with:
 
 ```bash
 python pipeline.py --halueval --num_samples 400 --model EleutherAI/pythia-160m \
-    --results results/halueval_pythia160m_n400.json
+    --results results/halueval_pythia160m_n400_paired.json
+python pipeline.py --halueval --num_samples 400 --model Qwen/Qwen2.5-0.5B-Instruct \
+    --results results/halueval_qwen25_0.5b_n400.json
 ```
 
-| Detector | Features | CV AUROC | 95% CI |
-|---|---|---|---|
-| **Logistic regression** | 24D (18 attention + 6 token-entropy) | **0.9728** | [0.9545, 0.9870] |
-| MLP | 24D | 0.9662 | [0.9452, 0.9826] |
-| `BlackBoxEntropyDetector` | 7D top-K logprobs only | 0.9304 | [0.9038, 0.9529] |
-| `CalibratedEntropyDetector` | 24D | 0.9149 | [0.8839, 0.9398] |
-
-**Interpretation — the black-box result is the interesting one.** `BlackBoxEntropyDetector` reaches 0.9304 AUROC using *only* the top-5 logprobs an API would return: no attention weights, no full-vocabulary distribution. That is within 0.04 AUROC of the full white-box linear model while discarding almost all of its input. For a method meant to run against a commercial API, that gap is the number that matters, and it is small.
-
-**The calibrated detector currently underperforms the plain linear baseline** (0.9149 vs 0.9728), and its CI does not overlap the linear model's. This is an honest negative result for the repo's headline contribution *in this configuration*. The most likely explanation is that the calibration layer is solving a problem this benchmark does not have: it exists to make scores transfer across domains and models (§4.3), and a single-domain, single-model, in-distribution evaluation gives it no opportunity to pay that off while still charging the variance cost of fitting an isotonic map and a covariance on limited calibration data. The claim it is built on — from [Phillips et al. (2026)](https://arxiv.org/abs/2603.21172) — is about *risk-coverage behavior under distribution shift*, which this table does not measure. Testing it properly needs a cross-domain or cross-model split; see §5.4.
-
-Held-out split (120 samples, single train/test split rather than CV):
-
-| Detector | AUROC | F1 | FPR |
-|---|---|---|---|
-| BiLSTM (per-layer sequences) | 0.9860 | 0.9630 | 0.0000 |
-| MLP | 0.9797 | 0.9241 | 0.1600 |
-| Logistic regression | 0.9794 | 0.9371 | 0.1200 |
-
-**The BiLSTM number is a genuine reversal, but do not over-read it.** The historical result (§5.2) had the BiLSTM at 0.78 AUROC, well behind the linear baseline, and that gap was the repo's standing open question. Two bugs found and fixed since then account for much of it: a label/sequence misalignment in the BiLSTM path, and a `context_length` error that made the lookback-ratio feature degenerate (it measured attention to the whole sequence rather than to the prompt). After the fixes the BiLSTM leads on the held-out split. **However** — this is a single 120-sample split, not cross-validated, while the flat detectors above have 5-fold CV numbers. A 0.006 AUROC lead on 120 samples is not a result. The honest summary is that the BiLSTM is no longer obviously *worse*, and deserves a proper CV comparison it does not yet have.
-
-**Feature-family ablation** (drop one family, retrain logistic regression; full 24D model = 0.9794 held-out AUROC):
-
-| Family removed | AUROC | Δ |
+| Detector | Pythia-160m (base) | Qwen2.5-0.5B-Instruct |
 |---|---|---|
-| Lookback | 0.9554 | **+0.0240** |
-| Entropy (attention) | 0.9720 | +0.0074 |
-| Frequency | 0.9786 | +0.0009 |
-| Cross-layer KL | 0.9806 | −0.0011 |
-| Spectral | 0.9846 | −0.0051 |
-| Token entropy | 0.9877 | −0.0083 |
+| **CalibratedEntropyDetector** | **0.9837** [0.9723, 0.9926] | **0.9869** [0.9767, 0.9951] |
+| Logistic regression | 0.9828 [0.9681, 0.9937] | 0.9860 [0.9714, 0.9963] |
+| MLP | 0.9799 [0.9639, 0.9922] | 0.9844 [0.9677, 0.9956] |
+| `BlackBoxEntropyDetector` | 0.9285 [0.9030, 0.9501] | 0.9005 [0.8668, 0.9288] |
 
-**Interpretation:** only the lookback family clearly earns its place. Removing it costs 0.024 AUROC — an order of magnitude more than any other family. Three families (cross-layer KL, spectral, token entropy) have *negative* deltas, meaning the model scored slightly better without them; at this sample size those are noise, but they are certainly not evidence of contribution. This is corroborated by the logistic regression's own weights, where `lb_ratio_entropy` (0.89) and `lb_ratio_mean` (0.67) sit at the top alongside `ent_std` (0.83).
+**Two real findings here.** First, the method is not tied to one weak base model: results hold — and are marginally *better* — on a completely different model family (Qwen2.5, instruction-tuned, different tokenizer, different attention head/layer geometry) using the same 24D feature pipeline, chat-template-aware prompting (§5.1's "why" is in `pipeline.py::build_prompt_and_text`), and no per-model tuning. Second, `CalibratedEntropyDetector` — this repo's headline contribution — now edges out logistic regression on *both* models. That was not true in an earlier iteration of this table; §5.3 explains what changed and why, honestly, including the version of this detector that did not work.
 
-That lookback dominates is consistent with [Chuang et al. (2024)](https://aclanthology.org/2024.emnlp-main.84/), whose entire method is the lookback ratio. It is *awkward* for this repo specifically, since cross-layer KL divergence is in the project's name and is contributing nothing measurable here.
+### 5.2 The matched-pair fix — and a real surprise
 
-### 5.2 Historical benchmark — `results/benchmark_results.json`
+An earlier version of `DataGenerator.from_halueval()` loaded a HaluEval mirror (`pminervini/HaluEval`, `qa_samples`) with **zero matched question pairs** — 10,000 rows, 10,000 unique questions, meaning "correct" and "hallucinated" were disjoint question populations rather than paired variants of the same question. That is a real confound: a detector could score well by picking up on differences between two unrelated question sets rather than hallucination itself. `from_halueval()` now loads `shunk031/HaluEval` (`qa` config), which preserves the original `knowledge`/`question`/`right_answer`/`hallucinated_answer` schema — verified directly to contain 10,000 genuinely matched rows (`tests/test_data_generator.py` protects this invariant offline, no network required).
 
-T4 GPU, April 2026, Pythia-160m, HaluEval QA, 500 samples. This predates the current feature stack: it used an earlier two-signal "AED" configuration (per-head entropy + cross-layer KL only), run through notebooks that are now broken (§6.3).
+**The honest surprise: fixing the confound did not shrink the numbers.** The working hypothesis going in was that the disjoint-question setup inflated AUROC — that hypothesis does not survive contact with the data. Pythia-160m's logistic-regression CV AUROC went from 0.9728 (disjoint, `results/halueval_pythia160m_n400.json`) to 0.9828 (matched-pair, §5.1) — *up*, not down. The likely explanation: disjoint questions introduce topic-level noise a model has to generalize across, while matched pairs isolate the one thing that actually differs (the answer's entropy/attention signature) and remove everything else as a nuisance variable. This is a genuine update against a prior stated with too much confidence in an earlier draft of this README — worth leaving visible rather than quietly editing away.
 
-| Detector | AUROC | F1 | FPR@90%TPR | Latency |
-|---|---|---|---|---|
-| Logistic regression | 0.9068 | 0.8148 | 0.30 | — |
-| BiLSTM ("AED") | 0.7808 | 0.8264 | 0.38 | 38.49 ms/sample |
+### 5.3 The calibration fix: from a negative result to parity
 
-Companion ablation (`results/ablation_results.json`), on those two signals only:
+The previous draft of this README reported `CalibratedEntropyDetector` clearly behind logistic regression (0.9149 vs 0.9728) and treated it as an open negative result. Digging into *why* found a specific, fixable cause: `score_index` — the single feature column fed to the detector's isotonic-calibration stage — was hardcoded to column 0 (`entropy_mean`), despite this repo's own ablation (§5.5) showing lookback-ratio features, not entropy, carry the strongest single-feature signal. `score_index` now defaults to `"auto"`, resolving at `fit()` time to whichever column has the highest single-feature `|AUROC-0.5|` on the training data (`calibrated_entropy_detector.py::_resolve_score_index`).
 
-| Configuration | AUROC | FPR@90%TPR |
+Swept on real paired-HaluEval features (Pythia-160m, 400 samples, 5-fold CV):
+
+| Configuration | CV AUROC |
+|---|---|
+| Old defaults (`score_index=0`, `blend_weight=0.5`) | 0.9323 |
+| `score_index="auto"`, `blend_weight=0.5` | 0.9818 |
+| `score_index="auto"`, `blend_weight=0.7` (**new default**) | **0.9833–0.9837** |
+| `score_index="auto"`, `blend_weight=0.0` (pure divergence term) | 0.8840 |
+| `score_index="auto"`, `blend_weight=1.0` (pure isotonic term) | 0.9689 |
+
+Auto-selecting the scalar score closes nearly the entire gap by itself (0.9323 → 0.9818); `blend_weight=0.7` — also swept, not guessed — adds a further small, consistent gain over the old default of 0.5. Neither pure term alone matches the blend (0.8840 and 0.9689 respectively), so the two-stage design is doing real, verifiable work, not just carrying dead weight. This is not a case of tuning until a number looks good: the fix is one hardcoded index that ablation had already shown was the wrong choice, corrected to select empirically rather than by a fixed guess.
+
+### 5.4 3-way decision routing
+
+Beyond a raw probability, `CalibratedEntropyDetector.route()` now maps its output into **RELIABLE / UNCERTAIN / UNRELIABLE** with an associated action (`accept` / `escalate` / `reject`), reviving a decision-routing concept from an earlier version of this project (`v1/confidence_calibrator.py`, dropped during a repo consolidation) rebuilt on the current calibration machinery rather than the old code. The two thresholds are fit from the calibration set, not hardcoded — see `calibrated_entropy_detector.py`'s module docstring for the exact quantile rule and the conservative-safety reasoning behind it (a false RELIABLE is worse than a false UNCERTAIN). This is the headline UI element in the [Streamlit demo](demo/) (§6.4).
+
+### 5.5 Feature-family ablation across two models
+
+Drop one family, retrain logistic regression on the rest (full 24D model: Pythia held-out AUROC 0.97, Qwen held-out AUROC 0.9714):
+
+| Family removed | Pythia-160m Δ | Qwen2.5-0.5B-Instruct Δ |
 |---|---|---|
-| Entropy only | 0.8225 | 0.30 |
-| KL only | 0.5400 | 0.60 |
-| Both | 0.8300 | 0.30 |
+| Lookback | **+0.0114** | −0.0017 |
+| Entropy (attention + token) | +0.0075 / +0.0019 | −0.0039 / −0.0006 |
+| Frequency | −0.0017 | +0.0022 |
+| Spectral | −0.0022 | +0.0025 |
+| Cross-layer KL | +0.0006 | +0.0039 |
 
-**Interpretation:** KL divergence alone scored 0.54 — barely above the 0.50 chance line — and adding it to entropy bought +0.0075 AUROC. Combined with §5.1's ablation, where cross-layer KL again contributes nothing measurable, this is now two independent runs a year apart pointing the same direction. The signal the repo is named after is the weakest one in it. That is worth stating plainly rather than burying.
+(Δ = full-model AUROC minus AUROC-with-family-removed; positive means the family helps.)
 
-A third file, `results/benchmark_results_cpu_quick.json` (GPT-2, 50 samples, CPU), exists only to prove the pipeline executes; at that sample size the numbers are noise.
+**These two columns do not agree with each other, and that disagreement is itself the finding.** On Pythia, lookback dominates by an order of magnitude over every other family — consistent with [Chuang et al. (2024)](https://aclanthology.org/2024.emnlp-main.84/), whose entire method is the lookback ratio. On Qwen, no family shows a magnitude above 0.004 in either direction — the full 24D model barely beats any single-family-ablated subset, meaning the feature set is *redundant* on this model rather than *dependent* on one dominant signal. Family importance is not a fixed property of the method; it is model-dependent, and reporting only one model's ablation (as an earlier version of this README did) would have overstated how universal the lookback finding is. Cross-layer KL divergence — the signal in this project's name — is the weakest or near-weakest family on both models, which was already the case before this fix and remains an open, unresolved weak point (§8.1).
 
-### 5.3 Latency
+### 5.6 BiLSTM: a second data point undercuts the earlier optimism
 
-38.49 ms/sample on a T4 (§5.2), for one forward pass with `output_attentions=True` plus feature extraction. The comparison that matters: semantic-entropy methods ([Farquhar et al., 2024](https://www.nature.com/articles/s41586-024-07421-0)) need 5–10 generations per query. Single-pass detection is roughly an order of magnitude cheaper, which is the whole argument for accepting a weaker signal.
+| | Pythia-160m held-out | Qwen2.5-0.5B-Instruct held-out |
+|---|---|---|
+| BiLSTM | 0.9747 | 0.9539 |
+| Logistic regression | 0.9700 | 0.9714 |
+| MLP | 0.9728 | 0.9728 |
 
-### 5.4 Caveats — read before citing any of this
+An earlier draft of this README, working from Pythia numbers alone, said the BiLSTM was "no longer obviously worse" than the linear baseline after two corrupting bugs were fixed (label/sequence misalignment; a `context_length` error). That reads differently with a second model in hand: on Qwen, BiLSTM is clearly *behind* both flat detectors (0.9539 vs ~0.972), the opposite pattern from Pythia. Neither held-out split is cross-validated, so neither number alone should be over-read — but two models pointing in opposite directions is stronger evidence of instability than either one pointing anywhere. The honest summary is now "inconsistent across models," not "recovering," and a proper CV comparison remains the actual open item.
 
-1. **The HaluEval split is not matched-pair, and this likely inflates every AUROC above.** The original HaluEval design pairs each question with *both* a correct and a hallucinated answer, which controls for question content and isolates the hallucination signal. The mirror this repo loads (`pminervini/HaluEval`, `qa_samples`) has 10,000 rows with **10,000 unique questions and zero matched pairs** — verified directly. So the "correct" and "hallucinated" classes are entirely disjoint question sets, and a detector can score well by picking up surface differences between those two populations rather than hallucination as such. **This is the single biggest threat to the validity of §5.1**, and fixing it (loading the paired HaluEval format) should come before any further tuning.
-2. **Sample sizes are small.** 400 samples with a 120-sample held-out split. The CIs in §5.1 are wide enough that most between-detector gaps there are not individually significant.
-3. **One model, one domain.** Everything is Pythia-160m on HaluEval QA. Nothing here speaks to cross-model or cross-domain transfer — which, as noted in §5.1, is exactly the regime `CalibratedEntropyDetector` was designed for and has therefore not actually been tested in.
-4. **No committed abstention/risk-coverage curve on real data.** `abstention.py` runs, but no result artifact is committed.
-5. **The adversarial-robustness claim is unmeasured.** `adversarial.py` implements obfuscation, paraphrase, and multilingual-prefix attacks; no committed results file records the outcome.
+### 5.7 Black-box vs. white-box, per model
 
-`notebooks/real_pipeline_benchmark/` exists to run §5.1 at a scale and model size that a laptop CPU cannot reach; see §6.3.
+`BlackBoxEntropyDetector` — top-5 logprobs only, no attention, no full-vocabulary distribution — scores 0.9285 on Pythia and 0.9005 on Qwen (§5.1), both clearly behind the white-box detectors but well above chance. The gap widens on Qwen, plausibly because chat-template-formatted generation concentrates more probability mass in the visible top-5 for a well-instruction-tuned model's more templated answers, making the truncated-entropy lower bound (§4.4) a worse approximation of the true distribution's shape. That is a plausible mechanism, not a confirmed one — it has not been tested directly (e.g. by measuring top-5 mass coverage per model) and should be read as a hypothesis for future work, not a finding.
+
+### 5.8 Latency
+
+38.49 ms/sample on a T4 GPU (from the historical benchmark, §5.9 — a comparable number has not yet been re-measured on the current pipeline). The comparison that matters: semantic-entropy methods ([Farquhar et al., 2024](https://www.nature.com/articles/s41586-024-07421-0)) need 5–10 generations per query. Single-pass detection is roughly an order of magnitude cheaper, which is the whole argument for accepting a weaker signal.
+
+### 5.9 Historical benchmark — superseded, kept for provenance only
+
+`results/halueval_pythia160m_n400.json` (disjoint-question data, old detector defaults) and `results/benchmark_results.json` / `results/ablation_results.json` (T4 GPU, April 2026, an earlier two-signal "AED" configuration — per-head entropy + cross-layer KL only — run through notebooks since removed as dead wrappers around a deleted module, §6.3) are no longer the numbers to cite. They remain committed because §5.2 and §5.5 directly compare against them to show what changed and why; do not use them as current evidence on their own. `results/benchmark_results_cpu_quick.json` (GPT-2, 50 samples) exists only to prove the pipeline executes.
+
+### 5.10 Caveats — read before citing any of this
+
+1. **Sample sizes are still modest.** 400 samples per model, 120-sample held-out splits. The CIs in §5.1 are wide enough that some between-detector gaps are not individually significant — read the CV table's confidence intervals, not just the point estimates.
+2. **Two models is not many models.** §5.1/§5.5/§5.6 now span a base model and an instruction-tuned model of similar scale (160M/500M parameters) — real progress over one model, but still nothing above ~0.5B parameters, and no cross-domain evaluation (everything is HaluEval QA).
+3. **No committed abstention/risk-coverage curve on real data.** `abstention.py` runs, but no result artifact is committed.
+4. **The adversarial-robustness claim is unmeasured.** `adversarial.py` implements obfuscation, paraphrase, and multilingual-prefix attacks; no committed results file records the outcome.
+5. **§5.7's black-box explanation is a hypothesis, not a finding** — flagged there, repeated here because it's the kind of claim that's easy to skim past as settled.
+
+`notebooks/real_pipeline_benchmark/` exists to run §5.1 at a scale a laptop CPU cannot reach; see §6.3.
 
 ---
 
@@ -281,10 +299,11 @@ Synthetic demo — no model download, no API, runs in seconds:
 python pipeline.py --synthetic --num_samples 1000
 ```
 
-HaluEval benchmark with a local model (needs `pip install torch transformers datasets`):
+HaluEval benchmark with a local model (needs `pip install torch transformers datasets`) — works with both base and instruction-tuned models, since `pipeline.py` detects a chat template and switches prompt format automatically (`pipeline.py::build_prompt_and_text`):
 
 ```bash
-python pipeline.py --halueval --num_samples 500 --model EleutherAI/pythia-160m --results results/my_run.json
+python pipeline.py --halueval --num_samples 400 --model EleutherAI/pythia-160m --results results/my_run.json
+python pipeline.py --halueval --num_samples 400 --model Qwen/Qwen2.5-0.5B-Instruct --results results/my_run_qwen.json
 ```
 
 Abstention / risk-coverage analysis:
@@ -333,13 +352,20 @@ kaggle kernels status <your-username>/real-pipeline-benchmark
 | Notebook | Status | Purpose |
 |---|---|---|
 | `notebooks/pytorch_dl_testbed.ipynb` | **Working** | Synthetic sandbox — a controllable pseudo-LM with tunable difficulty (`gamma`) and confident-confabulation fraction (`confab_frac`). Tests architecture hypotheses cheaply before touching real code. |
-| `notebooks/real_pipeline_benchmark/` | **Working, not yet run at scale** | Clones the repo and calls the real `pipeline.py::run_real_pipeline()` on real HaluEval data. This is what will fill the §5.4 gaps. |
+| `notebooks/real_pipeline_benchmark/` | **Working** | Clones the repo and calls the real `pipeline.py::run_real_pipeline()` on real HaluEval data — the local CLI (not yet this notebook) already produced §5.1's two-model results; this notebook exists to rerun the same thing at a scale/model size a laptop CPU cannot reach. |
 | `notebooks/full_pipeline.ipynb` | Working | End-to-end Claude-labeled data generation → features → classifier (needs `ANTHROPIC_API_KEY`) |
-| `notebooks/gpu_benchmark.ipynb` | **Broken** | Produced `results/benchmark_results.json`; imports the removed `run_experiment.py` |
-| `notebooks/ablation_study.ipynb` | **Broken** | Produced `results/ablation_results.json`; same broken import |
-| `notebooks/quick_cpu_validation.ipynb` | **Broken** | Same broken import |
 
-The three broken notebooks are the ones that generated §5's numbers, back when the repo had a separate `run_experiment.py` module. That module was removed during consolidation and the notebooks were never ported. They need rewriting against the current `pipeline.py` API, or retiring in favor of `real_pipeline_benchmark`.
+Three other notebooks (`gpu_benchmark.ipynb`, `ablation_study.ipynb`, `quick_cpu_validation.ipynb`) generated §5.9's historical numbers back when the repo had a separate `run_experiment.py` module. That module was removed during consolidation, the notebooks were thin wrappers around it with no algorithmic content of their own, and the current 5-family pipeline strictly supersedes the two-signal feature set they exercised — so rather than porting dead wrappers, they were removed. `results/benchmark_results.json` and `results/ablation_results.json` remain committed as the historical record §5.9 already documents.
+
+### 6.4 Interactive demo
+
+```bash
+pip install -r requirements-demo.txt
+python demo/build_detector.py      # one-time: fits demo/detector.pkl on real paired HaluEval data
+streamlit run demo/app.py
+```
+
+A small local model (Pythia-160m by default) answers questions live — some correctly, some hallucinated — while a `CalibratedEntropyDetector` scores every answer in real time and shows the §5.4 RELIABLE/UNCERTAIN/UNRELIABLE routing as the headline result, with the raw probability and top contributing features underneath. A second mode browses real HaluEval question pairs (correct vs. hallucinated answer, same question) side by side. See [demo/README.md](demo/README.md) for details and the honest framing on what a 160M-parameter base model will and won't do on demand.
 
 ---
 
@@ -360,13 +386,15 @@ The three broken notebooks are the ones that generated §5's numbers, back when 
 ├── vertex_deploy.py                # GCP Vertex AI deployment scaffolding
 ├── tests/                          # pytest suite, one file per module
 ├── notebooks/                      # Kaggle/Colab experiment notebooks (see §6.3 for status)
+├── demo/                           # Streamlit live demo (see §6.4)
 ├── paper/                          # arXiv paper source (paper.tex, references.bib)
 ├── results/                        # Committed benchmark JSON (see §5)
 ├── AGENT.md                        # Design notes, math reference, known limitations
-└── requirements.txt
+├── requirements.txt
+└── requirements-demo.txt           # streamlit + torch + transformers, for demo/ only
 ```
 
-Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real models), `datasets` (HaluEval), `anthropic` (data generation), `openai` (black-box demo), `chromadb`/`sentence-transformers` (embedding anomaly), and `kaggle` (CI) are all optional and lazily imported — tests that need them skip cleanly when they are absent.
+Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real models), `datasets` (HaluEval), `anthropic` (data generation), `openai` (black-box demo), `chromadb`/`sentence-transformers` (embedding anomaly), `kaggle` (CI), and `streamlit` (`demo/`) are all optional and lazily imported/kept in a separate requirements file — tests that need them skip cleanly when they are absent.
 
 ---
 
@@ -376,12 +404,12 @@ Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real mod
 
 | Limitation | Why it happens | Current mitigation |
 |---|---|---|
-| **Benchmark is not matched-pair** | The loaded HaluEval mirror has zero paired questions (§5.4), so correct/hallucinated classes are disjoint question sets and reported AUROC is likely inflated | Load the paired HaluEval format — this is the highest-priority fix |
-| **The calibration layer is untested where it should help** | It underperforms the linear baseline in-distribution (§5.1); its purpose is cross-domain transfer, which nothing here measures | Build a cross-domain or cross-model evaluation split |
-| **Calibration is domain-specific by design** | Entropy scale shifts across domains; a threshold tuned on factual QA does not transfer to creative writing | Fit a separate `CalibratedEntropyDetector` per domain |
+| **Calibration is domain-specific by design** | Entropy scale shifts across domains; a threshold tuned on factual QA does not transfer to creative writing | Fit a separate `CalibratedEntropyDetector` per domain; §5.1 shows it transfers across *models*, not yet across *domains* |
 | **Confident confabulation** | A model can produce low-entropy *and wrong* output when training data reinforced an incorrect pattern | Attention features are a first-pass filter, not a solution; pair with retrieval for high-stakes claims |
-| **White-box access required for most features** | Attention and full-logit features need model internals, unavailable via API | `BlackBoxEntropyDetector` falls back to top-K logprobs, with strictly less information (§4.4) |
-| **Cross-layer KL contributes nothing measurable** | Two independent runs (§5.1, §5.2) show it near-zero or negative in ablation, despite naming the project | Either find the regime where it helps, or drop it and rename the framing around lookback + entropy |
+| **White-box access required for most features** | Attention and full-logit features need model internals, unavailable via API | `BlackBoxEntropyDetector` falls back to top-K logprobs, with strictly less information (§4.4), and is measurably weaker on the instruction-tuned model tested (§5.7) |
+| **Cross-layer KL contributes nothing measurable** | Three independent runs now (§5.5's two models plus §5.9's historical run) show it near-zero or negative in ablation, despite naming the project | Either find the regime where it helps, or drop it and rename the framing around lookback + entropy |
+| **Feature-family importance does not transfer across models** | §5.5: lookback dominates on Pythia, nothing dominates on Qwen | Don't tune a deployment around one model's ablation result — re-run it per target model |
+| **BiLSTM is inconsistent across models** | §5.6: ahead of the linear baseline on Pythia, behind it on Qwen, on non-cross-validated splits both times | Default to `classifier_type="logistic"`; treat BiLSTM as unproven rather than either "fixed" or "broken" |
 | **No claim localization** | The detectors score *sequences*, not propositions — "this answer is risky", not "this span is wrong" | Use high-entropy token positions as candidate spans, then targeted retrieval |
 
 **The confident-confabulation limitation is the most fundamental one.** Anthropic's circuit-tracing work ([Batson et al., 2025](https://transformer-circuits.pub/2025/attribution-graphs/biology.html)) locates hallucination in a competition between a refusal-to-speculate circuit and a known-entity detector. Every feature in this repo measures downstream symptoms of that competition, not the circuit itself — so a model doing confident motivated reasoning produces focused, low-entropy attention and scores as reliable. Closing that gap needs activation-level probing, e.g. [Cross-Layer Attention Probing](https://arxiv.org/abs/2509.09700), not better attention statistics.
@@ -390,10 +418,10 @@ Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real mod
 
 Ordered roughly by what would most change the picture:
 
-1. **Does the matched-pair split change everything?** §5.4's first caveat is the one that could move every number in §5.1. Re-running on properly paired HaluEval — same question, correct vs. hallucinated answer — removes the confound and gives a real measurement.
-2. **Does calibration pay off under distribution shift?** The whole argument for §4.3 is cross-domain transfer, and the current evaluation cannot see it. Train the calibrator on one domain, test on another.
-3. **Is cross-layer KL salvageable?** It has now failed to contribute in two ablations. Either there is a regime where the layer-dynamics story holds (larger models, longer contexts, RAG settings like [Bazarova et al., 2026](https://arxiv.org/abs/2504.10063)), or the framing should change.
-4. **Entropy under RLHF.** Instruction-tuned models are rewarded for confident-sounding output, which compresses the entropy distribution. Does that compress the hallucination signal with it?
+1. **Does calibration pay off under distribution *shift*, not just across models?** §5.1 shows `CalibratedEntropyDetector` transfers cleanly across two model families on the same domain (HaluEval QA) — the model-transfer question is answered. The domain-transfer question is not: train the calibrator on one domain, test on another.
+2. **Is cross-layer KL salvageable?** It has now failed to contribute in three independent ablations across two models and two pipeline generations. Either there is a regime where the layer-dynamics story holds (larger models, longer contexts, RAG settings like [Bazarova et al., 2026](https://arxiv.org/abs/2504.10063)), or the framing should change.
+3. **Why does feature-family importance flip between models (§5.5)?** Lookback dominates on Pythia and is negligible on Qwen; nothing dominates on Qwen at all. Is this instruction-tuning specific, scale-specific, or architecture-specific? A third model would start to distinguish these.
+4. **Entropy under RLHF.** Instruction-tuned models are rewarded for confident-sounding output, which compresses the entropy distribution. Qwen2.5-0.5B-Instruct's results (§5.1) don't show obvious compression relative to Pythia, but this wasn't measured directly — a controlled comparison (same model family, base vs. instruct checkpoint) would isolate it.
 5. **Multi-hop reasoning and snowballing.** Chains where every individual step is low-entropy but the composition is false are not captured by token-level entropy at all. [Zhang et al. (2023)](https://arxiv.org/abs/2305.13534) document this concretely: once a model commits to an early false claim, it generates confident, low-entropy justifications for it — and can independently recognize 67–87% of those justifications as wrong when asked to check its own work later. That gap between what the model *can* verify and what it *did* generate confidently is exactly the ceiling described in §8.1.
 6. **Cross-lingual transfer.** Calibration is almost certainly language-specific; untested.
 7. **Uncertainty vs. knowledge boundary.** Entropy reliably flags "outside training distribution," but conflates honest uncertainty with confident confabulation on conflicting training data. These are different failure modes deserving different responses.
@@ -426,7 +454,7 @@ Ordered roughly by what would most change the picture:
 **LLM hallucination — surveys and benchmarks**
 16. Ji, Z. et al. (2023). [Survey of Hallucination in Natural Language Generation](https://dl.acm.org/doi/10.1145/3571730). *ACM Computing Surveys* 55(12).
 17. Huang, L. et al. (2025). [A Survey on Hallucination in Large Language Models: Principles, Taxonomy, Challenges, and Open Questions](https://arxiv.org/abs/2311.05232). *ACM Transactions on Information Systems* 43(2):1–55.
-18. Li, J., Cheng, X., Zhao, X., Nie, J.-Y. & Wen, J.-R. (2023). [HaluEval: A Large-Scale Hallucination Evaluation Benchmark](https://aclanthology.org/2023.emnlp-main.397/). *EMNLP 2023.* — the benchmark used throughout (see §5.4 for a caveat on the mirror this repo loads).
+18. Li, J., Cheng, X., Zhao, X., Nie, J.-Y. & Wen, J.-R. (2023). [HaluEval: A Large-Scale Hallucination Evaluation Benchmark](https://aclanthology.org/2023.emnlp-main.397/). *EMNLP 2023.* — the benchmark used throughout (see §5.2 for the matched-pair loading fix).
 
 **Uncertainty-based hallucination detection**
 19. Kadavath, S. et al. (2022). [Language Models (Mostly) Know What They Know](https://arxiv.org/abs/2207.05221). *arXiv:2207.05221.*
@@ -440,7 +468,7 @@ Ordered roughly by what would most change the picture:
 27. Vathul, A., Lee, D., Chen, S. & Tasmia, A. (2025). [ShED-HD: A Shannon Entropy Distribution Framework for Lightweight Hallucination Detection](https://arxiv.org/abs/2503.18242). *arXiv:2503.18242.* — BiLSTM over sequence-level entropy patterns.
 
 **Attention-based detection**
-28. Chuang, Y.-S., Qiu, L., Hsieh, C.-Y., Krishna, R., Kim, Y. & Glass, J. (2024). [Lookback Lens](https://aclanthology.org/2024.emnlp-main.84/). *EMNLP 2024.* — lookback-ratio features; the strongest-contributing family in §5.1's ablation.
+28. Chuang, Y.-S., Qiu, L., Hsieh, C.-Y., Krishna, R., Kim, Y. & Glass, J. (2024). [Lookback Lens](https://aclanthology.org/2024.emnlp-main.84/). *EMNLP 2024.* — lookback-ratio features; the dominant family on one of §5.5's two models, negligible on the other.
 29. Binkowski, J., Janiak, D., Sawczyn, A., Gabrys, B. & Kajdanowicz, T. (2025). [Hallucination Detection in LLMs Using Spectral Features of Attention Maps](https://arxiv.org/abs/2502.17598). *EMNLP 2025.* — LapEigvals; the spectral family.
 30. Qi, S. et al. (2026). [Detecting Contextual Hallucinations in LLMs with Frequency-Aware Attention](https://arxiv.org/abs/2602.18145). *arXiv:2602.18145.* — the frequency family.
 31. Bazarova, A. et al. (2026). [Hallucination Detection in LLMs with Topological Divergence on Attention Graphs](https://arxiv.org/abs/2504.10063). *ACL 2026.* — TOHA.

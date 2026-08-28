@@ -200,7 +200,7 @@ def run_abstention_experiment(
 
 def save_risk_coverage_table(points: List[RiskCoveragePoint], path: str) -> None:
     """Write the risk-coverage curve to a CSV, consistent with how
-    COLABS.md/paper.tex document results as tables rather than plots."""
+    README.md/paper.tex document results as tables rather than plots."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as f:
@@ -233,7 +233,7 @@ def main():
 
     if args.halueval:
         from data_generator import DataGenerator
-        from pipeline import extract_attention_from_model
+        from pipeline import extract_attention_from_model, build_prompt_and_text
         from feature_engineer import AttentionFeatureEngineer
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -252,8 +252,7 @@ def main():
         X_list, y_list = [], []
         for sample in clean:
             try:
-                prompt = f"Question: {sample.question}\nAnswer:"
-                text = f"{prompt} {sample.model_answer}"
+                prompt, text = build_prompt_and_text(tokenizer, sample.question, sample.model_answer)
                 attentions, ctx_len = extract_attention_from_model(text, model, tokenizer, device, prompt=prompt)
                 feats = engineer.extract(attentions, ctx_len)
                 if not np.all(np.isfinite(feats)):

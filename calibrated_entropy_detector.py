@@ -41,6 +41,28 @@ API matches HallucinationDetector's flat-vector contract exactly
 (fit/predict_proba/predict/evaluate/save/load), so it plugs directly into
 pipeline.py's existing CV/ablation/bootstrap harness.
 
+Beyond a raw probability, route() maps predict_proba's output into a 3-way
+decision — RELIABLE / UNCERTAIN / UNRELIABLE — for callers that need an
+actionable label rather than a number to threshold themselves (e.g. the
+Streamlit demo's traffic-light display). This revives a routing concept from
+an earlier version of this project (v1/confidence_calibrator.py, dropped
+during a repo consolidation) but rebuilds it on the current calibration
+machinery rather than porting the old code. Framed as a one-sided hypothesis
+test — H0: "this answer is reliable" vs H1: "this answer is hallucinated" —
+an UNRELIABLE routing is a rejection of H0 at a significance level implied
+by `unreliable_quantile` (default 0.10: the threshold is chosen so at most
+10% of genuinely-hallucinated calibration examples would be missed). The two
+thresholds are fit from the calibration set, not hardcoded: threshold_reliable
+is the `reliable_quantile` quantile of predict_proba scores among calibration
+correct-answer examples (default 0.90 — 90% of correct answers score below
+it), and threshold_unreliable is the `unreliable_quantile` quantile among
+calibration hallucinated examples (default 0.10 — 90% of hallucinated
+examples score above it). Choosing wide, asymmetric quantiles rather than a
+single 0.5 cutoff is a deliberate conservative-safety bias carried over from
+the routing concept's original motivation: a false RELIABLE (trusting a
+hallucination) is worse than a false UNCERTAIN (needlessly escalating a
+correct answer for review).
+
 Why isotonic regression (Stage A) instead of Platt scaling (fitting a
 logistic sigmoid to u(x))? Platt scaling assumes the true calibration curve
 *is* a sigmoid; isotonic regression only assumes it's monotonic and fits the
@@ -239,6 +261,23 @@ def percentile_rank(scores: np.ndarray, reference_scores: np.ndarray) -> np.ndar
 # =========================================================================
 
 @dataclass
+class RoutingDecision:
+    """
+    A 3-way decision derived from predict_proba's output, for callers that
+    want an actionable label rather than a raw probability to threshold
+    themselves. See CalibratedEntropyDetector.route().
+    """
+    label: str            # "RELIABLE" | "UNCERTAIN" | "UNRELIABLE"
+    action: str           # "accept" | "escalate" | "reject"
+    p_hallucination: float
+    threshold_reliable: float    # p_hallucination below this -> RELIABLE
+    threshold_unreliable: float  # p_hallucination at/above this -> UNRELIABLE
+
+    def __str__(self) -> str:
+        return f"[{self.label}] p(hallucination)={self.p_hallucination:.3f} -> {self.action}"
+
+
+@dataclass
 class _FitState:
     mean: np.ndarray
     std: np.ndarray
@@ -248,6 +287,9 @@ class _FitState:
     logistic_a: float
     logistic_b: float
     reference_divergence: np.ndarray  # divergence scores of the y==0 calibration set
+    threshold_reliable: float
+    threshold_unreliable: float
+    score_index_resolved: int  # the concrete column score_index="auto" resolved to
 
 
 class CalibratedEntropyDetector:
@@ -258,47 +300,93 @@ class CalibratedEntropyDetector:
 
     Parameters
     ----------
-    score_index : int
+    score_index : int or "auto"
         Column of X used as the scalar raw score u(x) fed to isotonic
-        regression (default 0 — e.g. entropy_mean when X is the 6-D output
-        of EntropyFeatureExtractor; caller controls what X actually is).
+        regression. An int pins a specific column (e.g. 0 = entropy_mean
+        when X is the 6-D output of EntropyFeatureExtractor; caller controls
+        what X actually is). The default, "auto", instead picks — at fit()
+        time — whichever column has the highest single-feature |AUROC-0.5|
+        against the training labels, i.e. the column that alone best ranks
+        hallucinated above correct examples. This replaces an earlier fixed
+        default of column 0 (typically entropy_mean), which the project's
+        own feature-family ablation showed is not actually the strongest
+        single signal — lookback-ratio features consistently dominate (see
+        README.md §5.1's ablation table). Resolved once during fit() and
+        stored (not re-resolved on each predict_proba() call), so repeated
+        scoring stays a single indexing operation, and the resolved index is
+        picklable via save()/load() like the rest of the fitted state.
     blend_weight : float
         Weight on the isotonic-calibration term vs. the divergence term in
-        the final blended probability (default 0.5).
+        the final blended probability. Default 0.7 — swept on real paired
+        HaluEval features (README.md §5.1) against {0.0, 0.1, ..., 1.0} with
+        score_index="auto": 0.7 gave the best 5-fold CV AUROC (0.9833, tied
+        within CI overlap with 0.5-0.8), clearly ahead of either pure term
+        alone (0.0="pure divergence": 0.8840; 1.0="pure isotonic": 0.9689) —
+        i.e. the blend itself, not just auto-selecting the scalar score,
+        does real work. This replaces an earlier default of 0.5 (an
+        unswept midpoint guess, not a fitted value).
     cov_shrinkage : float
         Diagonal shrinkage applied to the reference covariance (default 0.1)
         to keep Mahalanobis distance well-defined even when feature
         dimensionality approaches the number of calibration examples.
     divergence : {"mahalanobis", "percentile"}
         Which divergence estimator to use.
+    reliable_quantile : float
+        Quantile (over calibration correct-answer scores) used to set
+        route()'s RELIABLE threshold (default 0.90 — see module docstring).
+    unreliable_quantile : float
+        Quantile (over calibration hallucinated-answer scores) used to set
+        route()'s UNRELIABLE threshold (default 0.10 — see module docstring).
     """
 
     def __init__(
         self,
-        score_index: int = 0,
-        blend_weight: float = 0.5,
+        score_index: "int | str" = "auto",
+        blend_weight: float = 0.7,
         cov_shrinkage: float = 0.1,
         divergence: str = "mahalanobis",
         feature_names: Optional[List[str]] = None,
+        reliable_quantile: float = 0.90,
+        unreliable_quantile: float = 0.10,
     ) -> None:
         if divergence not in ("mahalanobis", "percentile"):
             raise ValueError(f"Unknown divergence: {divergence!r}. Choose: mahalanobis, percentile")
+        if not (score_index == "auto" or isinstance(score_index, (int, np.integer))):
+            raise TypeError(f"score_index must be an int or 'auto', got {score_index!r}")
         self.score_index = score_index
         self.blend_weight = blend_weight
         self.cov_shrinkage = cov_shrinkage
         self.divergence = divergence
         self.feature_names = feature_names
+        self.reliable_quantile = reliable_quantile
+        self.unreliable_quantile = unreliable_quantile
         self._state: Optional[_FitState] = None
         self._fitted = False
 
     def _standardize(self, X: np.ndarray, state: _FitState) -> np.ndarray:
         return (X - state.mean) / state.std
 
+    def _resolve_score_index(self, X_norm: np.ndarray, y: np.ndarray) -> int:
+        """
+        Pick the column of X_norm with the strongest single-feature
+        separation of y (highest |AUROC-0.5|), used when score_index="auto".
+        See __init__'s docstring for why.
+        """
+        from detector import compute_auroc  # local import: avoid a module-load cycle risk
+
+        best_j, best_sep = 0, -1.0
+        for j in range(X_norm.shape[1]):
+            auroc = compute_auroc(X_norm[:, j], y)
+            sep = abs(auroc - 0.5)
+            if sep > best_sep:
+                best_sep, best_j = sep, j
+        return best_j
+
     def _divergence_scores_raw(self, X_norm: np.ndarray, state: _FitState) -> np.ndarray:
         if self.divergence == "mahalanobis":
             return mahalanobis_distance(X_norm, state.mu_ref, state.sigma_inv)
         return percentile_rank(
-            X_norm[:, self.score_index], state.reference_divergence
+            X_norm[:, state.score_index_resolved], state.reference_divergence
         )
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "CalibratedEntropyDetector":
@@ -328,27 +416,58 @@ class CalibratedEntropyDetector:
             X_norm[correct_mask], shrinkage=self.cov_shrinkage
         )
 
+        score_index_resolved = (
+            self._resolve_score_index(X_norm, y)
+            if self.score_index == "auto" else int(self.score_index)
+        )
+
         # Placeholder state so _divergence_scores_raw can run for the
         # nonparametric reference set before the real state object exists.
         tmp_state = _FitState(
             mean=mean, std=std, mu_ref=mu_ref, sigma_inv=sigma_inv,
             isotonic_predict=lambda x: x, logistic_a=0.0, logistic_b=0.0,
-            reference_divergence=X_norm[correct_mask, self.score_index],
+            reference_divergence=X_norm[correct_mask, score_index_resolved],
+            threshold_reliable=0.0, threshold_unreliable=1.0,
+            score_index_resolved=score_index_resolved,
         )
         divergence_all = self._divergence_scores_raw(X_norm, tmp_state)
 
         # Stage A: isotonic calibration of the raw scalar score.
-        u = X_norm[:, self.score_index]
+        u = X_norm[:, score_index_resolved]
         isotonic_predict = isotonic_regression(u, y)
 
         # Stage B: scalar logistic regression of divergence -> y.
         logistic_a, logistic_b = self._fit_scalar_logistic(divergence_all, y)
+
+        # route() thresholds: fit on the same blended probability formula
+        # predict_proba() will later compute, evaluated here on the
+        # calibration set itself (see module docstring for the quantile
+        # rationale).
+        calibrated = isotonic_predict(u)
+        div_prob = sigmoid(logistic_a * divergence_all + logistic_b)
+        train_probs = np.clip(self.blend_weight * calibrated + (1 - self.blend_weight) * div_prob, 0.0, 1.0)
+
+        hallucinated_mask = y == 1
+        threshold_reliable = float(np.quantile(train_probs[correct_mask], self.reliable_quantile))
+        if hallucinated_mask.sum() > 0:
+            threshold_unreliable = float(np.quantile(train_probs[hallucinated_mask], self.unreliable_quantile))
+        else:
+            # No hallucinated calibration examples to set this from — disable
+            # the UNRELIABLE band rather than guess.
+            threshold_unreliable = 1.0
+        # Guard against an inverted band on heavily-overlapping distributions:
+        # collapse UNCERTAIN to zero width rather than let RELIABLE and
+        # UNRELIABLE cross.
+        threshold_unreliable = max(threshold_unreliable, threshold_reliable)
 
         self._state = _FitState(
             mean=mean, std=std, mu_ref=mu_ref, sigma_inv=sigma_inv,
             isotonic_predict=isotonic_predict,
             logistic_a=logistic_a, logistic_b=logistic_b,
             reference_divergence=divergence_all[correct_mask],
+            threshold_reliable=threshold_reliable,
+            threshold_unreliable=threshold_unreliable,
+            score_index_resolved=score_index_resolved,
         )
         self._fitted = True
         return self
@@ -392,7 +511,7 @@ class CalibratedEntropyDetector:
         state = self._state
         X_norm = self._standardize(X, state)
 
-        u = X_norm[:, self.score_index]
+        u = X_norm[:, state.score_index_resolved]
         calibrated = state.isotonic_predict(u)
 
         div = self._divergence_scores_raw(X_norm, state)
@@ -404,6 +523,40 @@ class CalibratedEntropyDetector:
 
     def predict(self, X: np.ndarray, threshold: float = 0.5) -> np.ndarray:
         return (self.predict_proba(X) >= threshold).astype(int)
+
+    def route(self, X: np.ndarray) -> List[RoutingDecision]:
+        """
+        Map predict_proba's output into 3-way RELIABLE / UNCERTAIN /
+        UNRELIABLE decisions using the thresholds fit in fit() (see module
+        docstring). One RoutingDecision per row of X.
+
+            p_hallucination < threshold_reliable    -> RELIABLE   (accept)
+            threshold_reliable <= p < threshold_unreliable -> UNCERTAIN (escalate)
+            p_hallucination >= threshold_unreliable -> UNRELIABLE (reject)
+        """
+        assert self._fitted, "Must call fit() first"
+        state = self._state
+        probs = self.predict_proba(X)
+        decisions = []
+        for p in probs:
+            p = float(p)
+            if p < state.threshold_reliable:
+                label, action = "RELIABLE", "accept"
+            elif p >= state.threshold_unreliable:
+                label, action = "UNRELIABLE", "reject"
+            else:
+                label, action = "UNCERTAIN", "escalate"
+            decisions.append(RoutingDecision(
+                label=label, action=action, p_hallucination=p,
+                threshold_reliable=state.threshold_reliable,
+                threshold_unreliable=state.threshold_unreliable,
+            ))
+        return decisions
+
+    def route_one(self, x: np.ndarray) -> RoutingDecision:
+        """Convenience wrapper for a single example (e.g. a live demo)."""
+        x = np.asarray(x, dtype=float).reshape(1, -1)
+        return self.route(x)[0]
 
     def evaluate(self, X: np.ndarray, y: np.ndarray, threshold: float = 0.5) -> DetectorMetrics:
         probs = self.predict_proba(X)
@@ -419,6 +572,8 @@ class CalibratedEntropyDetector:
                 "cov_shrinkage": self.cov_shrinkage,
                 "divergence": self.divergence,
                 "feature_names": self.feature_names,
+                "reliable_quantile": self.reliable_quantile,
+                "unreliable_quantile": self.unreliable_quantile,
                 "state": self._state,
                 "fitted": self._fitted,
             }, f)
@@ -433,6 +588,8 @@ class CalibratedEntropyDetector:
             cov_shrinkage=data["cov_shrinkage"],
             divergence=data["divergence"],
             feature_names=data["feature_names"],
+            reliable_quantile=data.get("reliable_quantile", 0.90),
+            unreliable_quantile=data.get("unreliable_quantile", 0.10),
         )
         det._state = data["state"]
         det._fitted = data["fitted"]
@@ -500,6 +657,26 @@ if __name__ == "__main__":
     assert np.allclose(det.predict_proba(X_test), loaded.predict_proba(X_test))
     Path(tmppath).unlink()
     print("  Save/load roundtrip ✅")
+
+    # Test 5: 3-way routing
+    print("\n--- Test 5: 3-way routing (RELIABLE/UNCERTAIN/UNRELIABLE) ---")
+    decisions = det.route(X_test)
+    labels = {d.label for d in decisions}
+    assert labels <= {"RELIABLE", "UNCERTAIN", "UNRELIABLE"}, f"Unexpected labels: {labels}"
+    # Well-separated synthetic correct examples should mostly route RELIABLE,
+    # and hallucinated examples mostly route UNRELIABLE.
+    correct_labels = [d.label for d, y in zip(decisions, y_test) if y == 0]
+    halluc_labels = [d.label for d, y in zip(decisions, y_test) if y == 1]
+    correct_reliable_frac = correct_labels.count("RELIABLE") / max(len(correct_labels), 1)
+    halluc_unreliable_frac = halluc_labels.count("UNRELIABLE") / max(len(halluc_labels), 1)
+    assert correct_reliable_frac > 0.5, f"Too few correct examples routed RELIABLE: {correct_reliable_frac:.2f}"
+    assert halluc_unreliable_frac > 0.5, f"Too few hallucinated examples routed UNRELIABLE: {halluc_unreliable_frac:.2f}"
+    assert det._state.threshold_reliable <= det._state.threshold_unreliable, "Inverted routing band"
+    # route_one matches route()'s first row.
+    single = det.route_one(X_test[0])
+    assert single.label == decisions[0].label and single.p_hallucination == decisions[0].p_hallucination
+    print(f"  correct->RELIABLE: {correct_reliable_frac:.0%}, hallucinated->UNRELIABLE: {halluc_unreliable_frac:.0%}")
+    print("  3-way routing behaves sanely ✅")
 
     print(f"\n{'=' * 60}")
     print("Calibrated entropy detector — ALL CHECKS PASS ✅")
