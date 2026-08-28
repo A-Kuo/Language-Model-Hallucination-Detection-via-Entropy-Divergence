@@ -4,12 +4,25 @@
 # or Streamlit Cloud silently installs only the core numpy/scipy deps and
 # `import torch` fails (or the deploy stalls) with no obvious error.
 #
+# IMPORTANT: Streamlit Cloud installs from exactly ONE requirements file, not
+# both root and this one additively (confirmed from its own deploy log: "Used:
+# uv with .../demo/requirements.txt", nothing from root requirements.txt also
+# ran). That means this file must be a COMPLETE list of everything demo/app.py
+# and everything it imports (pipeline.py, calibrated_entropy_detector.py, ...)
+# needs — including the core numpy/scipy that the root requirements.txt lists,
+# not just the "extra" ML deps. Forgetting this is exactly how the demo broke
+# once already (ModuleNotFoundError on `scipy.special` from
+# calibrated_entropy_detector.py, which the root-only numpy/scipy install
+# would have covered but this file originally didn't list).
+#
 # --extra-index-url pins torch to the CPU-only wheel (~200MB) instead of the
 # default CUDA build (~2GB+) — on a CPU-only host the CUDA build's extra
 # download is pure dead weight and is the single most common cause of a
 # Streamlit Cloud deploy hanging or timing out for a torch-based app.
 --extra-index-url https://download.pytorch.org/whl/cpu
 
+numpy>=1.24.0,<2.1
+scipy>=1.10.0,<1.15
 streamlit>=1.30.0
 torch>=2.0.0
 transformers>=4.30.0
