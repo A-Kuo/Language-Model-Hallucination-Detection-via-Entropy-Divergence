@@ -97,8 +97,8 @@ The refusal/known-entity competition is a discrete switch. Our logistic regressi
 - Add feature families from CHARM, Multi-View Attention papers
 - Integrate activation probing for circuit-level signals
 - Fit per-domain `CalibratedEntropyDetector` instances rather than one global calibration
-- Re-benchmark BiLSTM vs logistic regression on per-layer sequences (see README §5 — two bugs that corrupted the original comparison have since been fixed)
-- Use larger local models (Llama-3, Mistral, Phi-3) for richer hallucination patterns
+- Get a proper cross-validated BiLSTM vs logistic regression comparison (see README §5.6 — the original comparison's corrupting bugs are fixed, but the held-out-only comparison now disagrees across two model families, which CV would help resolve)
+- Scale past the two models now benchmarked (Pythia-160m, Qwen2.5-0.5B-Instruct — README §5.1): try something above ~0.5B params (Llama-3.2-1B+, Phi-3, Qwen2.5-1.5B+) to see whether the two models' *disagreeing* feature-family ablation (§5.5) starts converging with scale
 - Semantic entropy / multi-sample UQ methods are deliberately out of scope here (this repo focuses on single-pass signals) — see README §9 for that literature
 
 ---
