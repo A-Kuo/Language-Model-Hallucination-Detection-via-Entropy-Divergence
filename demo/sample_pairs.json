@@ -1,0 +1,152 @@
+[
+  {
+    "question": "What poem by this writer born in September 1872 was used in devotional and spoken word recordings?",
+    "correct": "Desiderata",
+    "hallucinated": "Max Ehrmann, born in September 1872, wrote \"Ascension\" that was used in devotional and spoken word recordings."
+  },
+  {
+    "question": "Which of the two European Space Agency astronauts, Jean-François Clervoy and Thomas Reiter, has participated in missions with NASA?",
+    "correct": "Jean-François André Clervoy",
+    "hallucinated": "Thomas Arthur Reiter participated in missions with NASA."
+  },
+  {
+    "question": "Is the film Shore Things, and the film Air Force, Incorporated, both documentaries made by the same person?",
+    "correct": "no",
+    "hallucinated": "Shore Things and Air Force, Incorporated were two documentaries made by the same person."
+  },
+  {
+    "question": "Moment by Moment was from the movie that starred which actress, comedian, and producer?",
+    "correct": "Mary Jean \"Lily\" Tomlin",
+    "hallucinated": "Moment by Moment was from the movie that starred the legendary Betty White."
+  },
+  {
+    "question": "What countries utilize the ECTS grading scale that Norway adopted?",
+    "correct": "Europe",
+    "hallucinated": "The ECTS grading scale is only used in the European countries."
+  },
+  {
+    "question": "Are Istanbul Technical University and Yeni Valide Mosque located in the same city?",
+    "correct": "yes",
+    "hallucinated": "No, Istanbul Technical University is located in Ankara."
+  },
+  {
+    "question": "Whitey Hilcher played for a baseball team that joined the National League (NL) in what year?",
+    "correct": "1890",
+    "hallucinated": "Whitey Hilcher played for the Cincinnati Reds in the 1920s."
+  },
+  {
+    "question": "\"I'm in Disgrace\" is the opening track on the second side of which English rock band formed in Muswell Hill, North London,1975 concept album, \"Schoolboys in Disgrace\"?",
+    "correct": "The Kinks",
+    "hallucinated": "The Rolling Stones"
+  },
+  {
+    "question": "Who was the linguist who expanded on languages initially developed by the author of \"The Hobbit\"?",
+    "correct": "David I. Salo",
+    "hallucinated": "Christopher Lee"
+  },
+  {
+    "question": "What county does Howard Park Historic District and Timothy Edward Howard have in common?",
+    "correct": "St. Joseph County",
+    "hallucinated": "Howard Park Historic District is in South Bend."
+  },
+  {
+    "question": "The final for the 2015–16 DFB-Pokal was played in which sports stadium in Berlin, Germany?",
+    "correct": "Olympiastadion",
+    "hallucinated": "The final for the 2015-16 DFB-Pokal was played in the Berlin Olympic Stadium."
+  },
+  {
+    "question": "Who was born in 28 September 1957 and held the position of The Minister of State for Policing, Fire and Criminal Justice?",
+    "correct": "Michael Alan Penning",
+    "hallucinated": "The Minister of State for Policing, Fire and Criminal Justice was born on 28 September 1957 and holds a degree in political science."
+  },
+  {
+    "question": "Rocket to the Morgue is a 1942 mystery novel written by an author who was born in this year?",
+    "correct": "1861",
+    "hallucinated": "Rocket to the Morgue is a 1942 mystery novel and its author was born in the 19th century."
+  },
+  {
+    "question": "What artists front his own band, The Fighting Hearts, and also co-founded the hard rock/heavy metal band The Almighty?",
+    "correct": "Ricky Warwick",
+    "hallucinated": "Stump Monroe and Floyd London."
+  },
+  {
+    "question": "Removed from circulation in 1999, the fillér was the Hungartian subunit of what Austro-Hungarian currency?",
+    "correct": "The Krone",
+    "hallucinated": "The fillér was a Hungarian coin that was completely different from the Austro-Hungarian Koruna."
+  },
+  {
+    "question": "Der Mond was composed by the man who was best known for what cantata?",
+    "correct": "Carmina Burana",
+    "hallucinated": "Der Mond was composed by Carl Orff."
+  },
+  {
+    "question": "Which series of Playstation games spawned a feature film and has a latest instalment called \"Deadlocked\"?",
+    "correct": "Ratchet & Clank",
+    "hallucinated": "The \"Jak and Daxter\" series had a feature film adaptation and a latest instalment called \"Deadlocked.\""
+  },
+  {
+    "question": "When did Losing my religion come out?",
+    "correct": "1991",
+    "hallucinated": "Losing My Religion was been out in 1990."
+  },
+  {
+    "question": "The Duchess of Cornwall uses her title instead of what other title, the title held by the first wife of Prince Charles?",
+    "correct": "Princess of Wales",
+    "hallucinated": "The Duchess of Cornwall uses the title of Queen."
+  },
+  {
+    "question": "The American film, television and stage actor John Magaro appeared in which film directed by Todd Haynes alongside with Rooney Mara?",
+    "correct": "Carol",
+    "hallucinated": "John Magaro appeared in the 2015 romantic drama \"Laura\"."
+  },
+  {
+    "question": "What Danish director is the director of Oslo, August 31st distantly related to?",
+    "correct": "Lars von Trier",
+    "hallucinated": "The director of Oslo, August 31st is distantly related to Niels Arden Oplev from Denmark."
+  },
+  {
+    "question": "What is the name of the sixth studio album by American rapper Future which contains the song titled Selfish?",
+    "correct": "Hndrxx",
+    "hallucinated": "Future's sixth studio album is \"Selfish.\""
+  },
+  {
+    "question": "Which magazine, Photoplay or McCall's was a monthly American women's magazine,  that enjoyed great popularity through much of the 20th century, peaking at a readership of 8.4 million in the early 1960s?",
+    "correct": "McCall's",
+    "hallucinated": "Photoplay was a popular women's magazine."
+  },
+  {
+    "question": "Who is the current guitarist for the band that released the album This Is Your Way Out?",
+    "correct": "ER White",
+    "hallucinated": "Marcellus Wallace was the guitarist."
+  },
+  {
+    "question": "What Bible college located in Louisville, Kentucky, was attended by Paul R. House who served for a time as president of the Evangelical Theological Society?",
+    "correct": "Southern Baptist Theological Seminary",
+    "hallucinated": "Paul R. House attended an esteemed Bible College, the Southern Baptist Theological Seminary."
+  },
+  {
+    "question": "What type of church did this American author found who claimed the ideas of Dianetics originated in the 1920s and 1930s?",
+    "correct": "Church of Scientology",
+    "hallucinated": "The American author founded a religious organization named The Church of Spiritual Technology."
+  },
+  {
+    "question": "Michael Ralph DeVito (born June 10, 1984) is a former American football defensive end, he  the National Football League (NFL), DeVito attended high school at Nauset Regional High School an NEASC accredited high school located in North Eastham, in which state?",
+    "correct": "Massachusetts",
+    "hallucinated": "DeVito attended high school in Vermont."
+  },
+  {
+    "question": "How many gatherings take place every Sunday at the church that Pascoe St Leger Grenfell donated an acre of land for?",
+    "correct": "four",
+    "hallucinated": "Three to four gatherings take place."
+  },
+  {
+    "question": "Are 919 Third Avenue and the Morgan Stanley Building located in the same area of New York?",
+    "correct": "yes",
+    "hallucinated": "No, they are not located nearby."
+  },
+  {
+    "question": "What character does Alexis Knapp play in the series of movies about Barden University's singing group, Pitch Perfect?",
+    "correct": "Stacie Conrad",
+    "hallucinated": "Alexis Knapp played Stacie Conrad."
+  }
+]

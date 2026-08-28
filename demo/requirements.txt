@@ -26,4 +26,9 @@ scipy>=1.10.0,<1.15
 streamlit>=1.30.0
 torch>=2.0.0
 transformers>=4.30.0
-datasets>=2.14.0
+
+# NOT needed here: `datasets` is only used by build_detector.py (a local-only
+# script that regenerates demo/detector.pkl and demo/sample_pairs.json) — the
+# deployed app.py reads the pre-baked demo/sample_pairs.json directly and
+# never calls DataGenerator.from_halueval() itself. Add `datasets>=2.14.0`
+# back here only if app.py starts calling it live again.

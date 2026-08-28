@@ -9,6 +9,14 @@ this is the same idea, just for the calibrated detector specifically, since
 pipeline.py's CLI only ever persists LogReg/MLP/BiLSTM, never
 CalibratedEntropyDetector, which is fit-and-discarded inside CV folds there).
 
+Also writes demo/sample_pairs.json — a small, static set of real HaluEval
+question/correct/hallucinated triples the deployed app reads directly,
+instead of calling DataGenerator.from_halueval() (and therefore needing
+`datasets` plus a live HuggingFace Hub download) at demo runtime. That live
+call used to run unconditionally on every cold start (Streamlit re-executes
+the whole script, including both tabs' bodies, on every run) and was a real
+contributor to the deployed demo taking a very long time to show anything.
+
 Usage:
     python demo/build_detector.py
     python demo/build_detector.py --num_samples 400 --model EleutherAI/pythia-160m
@@ -17,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -31,6 +40,24 @@ from pipeline import extract_attention_from_model, extract_logits_from_model, bu
 from calibrated_entropy_detector import CalibratedEntropyDetector
 
 
+def build_sample_pairs(samples, out_path: str, n_pairs: int = 30) -> None:
+    """Write up to n_pairs matched question/correct/hallucinated triples."""
+    by_question = {}
+    for s in samples:
+        by_question.setdefault(s.question, {})[s.label] = s.model_answer
+    pairs = [
+        {"question": q, "correct": d["correct"], "hallucinated": d["hallucinated"]}
+        for q, d in by_question.items()
+        if "correct" in d and "hallucinated" in d
+    ][:n_pairs]
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(pairs, f, indent=2, ensure_ascii=False)
+    print(f"Saved {len(pairs)} sample pairs to {out}")
+
+
 def build(num_samples: int, model_name: str, out_path: str, seed: int = 42) -> None:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -38,6 +65,8 @@ def build(num_samples: int, model_name: str, out_path: str, seed: int = 42) -> N
     print(f"Loading {num_samples} paired HaluEval samples...")
     samples = DataGenerator.from_halueval(num_samples=num_samples, seed=seed)
     clean = [s for s in samples if s.label != "ambiguous"]
+
+    build_sample_pairs(samples, str(Path(__file__).parent / "sample_pairs.json"))
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading {model_name} on {device}...")

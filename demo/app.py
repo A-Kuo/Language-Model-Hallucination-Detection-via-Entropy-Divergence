@@ -12,19 +12,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import json
+
 import numpy as np
 import streamlit as st
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from calibrated_entropy_detector import CalibratedEntropyDetector
-from data_generator import DataGenerator
 from entropy_baselines import EntropyFeatureExtractor
 from feature_engineer import AttentionFeatureEngineer
 from pipeline import build_prompt_and_text, extract_attention_from_model, extract_logits_from_model
 
 MODEL_NAME = "EleutherAI/pythia-160m"
 DETECTOR_PATH = Path(__file__).parent / "detector.pkl"
+SAMPLE_PAIRS_PATH = Path(__file__).parent / "sample_pairs.json"
 
 PRESET_PROMPTS = [
     "What is the capital of France?",
@@ -55,16 +57,34 @@ def load_detector():
 
 
 @st.cache_data(show_spinner="Loading HaluEval pairs...")
-def load_paired_examples(n_pairs: int = 30):
-    samples = DataGenerator.from_halueval(num_samples=n_pairs * 2, seed=123)
-    by_question = {}
-    for s in samples:
-        by_question.setdefault(s.question, {})[s.label] = s
-    return [
-        (q, d["correct"], d["hallucinated"])
-        for q, d in by_question.items()
-        if "correct" in d and "hallucinated" in d
-    ]
+def load_paired_examples():
+    """
+    Loads a small, pre-baked set of real HaluEval question/correct/hallucinated
+    triples from demo/sample_pairs.json (generated once via
+    DataGenerator.from_halueval() and committed — see that script's docstring
+    below). This deliberately avoids calling from_halueval() live: it needs
+    `datasets` plus a full download+parse of the HaluEval dataset from
+    HuggingFace Hub, which happened unconditionally on every cold start
+    (Streamlit re-executes the whole script on each run, including both tab
+    bodies, regardless of which tab is visible) and was a real contributor to
+    the deployed demo taking a very long time to show anything at all.
+    """
+    with open(SAMPLE_PAIRS_PATH, encoding="utf-8") as f:
+        pairs = json.load(f)
+    return [(p["question"], p["correct"], p["hallucinated"]) for p in pairs]
+
+
+# To regenerate demo/sample_pairs.json:
+#   python -c "
+#   import json
+#   from data_generator import DataGenerator
+#   samples = DataGenerator.from_halueval(num_samples=60, seed=123)
+#   by_q = {}
+#   for s in samples: by_q.setdefault(s.question, {})[s.label] = s.model_answer
+#   pairs = [{'question': q, 'correct': d['correct'], 'hallucinated': d['hallucinated']}
+#            for q, d in by_q.items() if 'correct' in d and 'hallucinated' in d]
+#   json.dump(pairs, open('demo/sample_pairs.json', 'w'), indent=2, ensure_ascii=False)
+#   "
 
 
 def score_text(model, tokenizer, detector, question: str, answer: str):
@@ -169,21 +189,21 @@ with tab_pairs:
     st.subheader("Real HaluEval pairs: same question, one correct answer, one hallucinated")
     pairs = load_paired_examples()
     idx = st.number_input("Pair index", min_value=0, max_value=len(pairs) - 1, value=0, step=1)
-    question, correct_sample, halluc_sample = pairs[idx]
+    question, correct_answer, halluc_answer = pairs[idx]
     st.markdown(f"**Question:** {question}")
 
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Correct answer**")
-        st.write(correct_sample.model_answer)
+        st.write(correct_answer)
         with st.spinner("Scoring..."):
-            decision, _ = score_text(model, tokenizer, detector, question, correct_sample.model_answer)
+            decision, _ = score_text(model, tokenizer, detector, question, correct_answer)
         render_decision(decision)
     with col2:
         st.markdown("**Hallucinated answer**")
-        st.write(halluc_sample.model_answer)
+        st.write(halluc_answer)
         with st.spinner("Scoring..."):
-            decision, _ = score_text(model, tokenizer, detector, question, halluc_sample.model_answer)
+            decision, _ = score_text(model, tokenizer, detector, question, halluc_answer)
         render_decision(decision)
 
     st.caption(

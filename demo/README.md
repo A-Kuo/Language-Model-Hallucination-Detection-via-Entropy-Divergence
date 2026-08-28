@@ -14,18 +14,22 @@ pip install -r demo/requirements.txt
 streamlit run demo/app.py
 ```
 
-`demo/detector.pkl` is already committed (see below), so this runs
-immediately — no build step required. If you want to rebuild it (e.g. after
-changing `--model` or `--num_samples`, or to pick up new HaluEval data):
+`demo/detector.pkl` and `demo/sample_pairs.json` are already committed (see
+below), so this runs immediately — no build step, and no `datasets` package
+needed at demo runtime (`demo/requirements.txt` doesn't include it). If you
+want to rebuild either (e.g. after changing `--model` or `--num_samples`, or
+to pick up new HaluEval data):
 
 ```bash
+pip install datasets   # only needed for this rebuild step, not for the deployed app
 python demo/build_detector.py
 ```
 
 This downloads paired HaluEval samples, extracts real attention/entropy
-features with Pythia-160m, and fits a `CalibratedEntropyDetector(score_index="auto")`
+features with Pythia-160m, fits a `CalibratedEntropyDetector(score_index="auto")`
 on them — the same detector class documented in README.md §4.3, not a toy
-stand-in. Takes a few minutes on CPU.
+stand-in — and writes a fresh `demo/sample_pairs.json` from the same fetched
+samples. Takes a few minutes on CPU.
 
 ## Deploying (Streamlit Community Cloud)
 
@@ -45,8 +49,19 @@ both hit as real failures while building this demo, not hypotheticals:
    this was hit), which has no prebuilt wheels yet for compiled packages like
    `scipy`/`torch` — pip/uv then falls back to building them from source,
    which can hang for a very long time on a resource-constrained free-tier
-   container. That's what "the deploy loads forever" turned out to be, once
-   the requirements-file issue above was ruled out.
+   container.
+3. **`demo/app.py` no longer calls `DataGenerator.from_halueval()` live.**
+   Streamlit re-executes the *entire* script on every run, including the
+   body of both `st.tabs()` panels regardless of which one is visible — so a
+   live call there triggered a full HaluEval dataset download from
+   HuggingFace Hub (plus needing the `datasets` package) on every cold start,
+   whether or not the user ever opened the "Paired examples" tab. It now
+   reads the pre-baked `demo/sample_pairs.json` instead — no network call,
+   no extra dependency. This, on top of (1) and (2), was likely the actual
+   "loads forever with no visible error" cause: dependencies installing fine
+   is not the same as the app rendering fast, and a script that unconditionally
+   pays for two separate live HF Hub downloads before the first paint has a
+   lot of ways to look silently stuck.
 
 ## What it shows
 
