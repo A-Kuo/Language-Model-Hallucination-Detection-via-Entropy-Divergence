@@ -360,10 +360,11 @@ Three other notebooks (`gpu_benchmark.ipynb`, `ablation_study.ipynb`, `quick_cpu
 ### 6.4 Interactive demo
 
 ```bash
-pip install -r requirements-demo.txt
-python demo/build_detector.py      # one-time: fits demo/detector.pkl on real paired HaluEval data
+pip install -r demo/requirements.txt
 streamlit run demo/app.py
 ```
+
+`demo/detector.pkl` is committed, so this runs immediately — `demo/build_detector.py` exists to rebuild it against a different model/sample size, not as a required first step.
 
 A small local model (Pythia-160m by default) answers questions live — some correctly, some hallucinated — while a `CalibratedEntropyDetector` scores every answer in real time and shows the §5.4 RELIABLE/UNCERTAIN/UNRELIABLE routing as the headline result, with the raw probability and top contributing features underneath. A second mode browses real HaluEval question pairs (correct vs. hallucinated answer, same question) side by side. See [demo/README.md](demo/README.md) for details and the honest framing on what a 160M-parameter base model will and won't do on demand.
 
@@ -387,14 +388,14 @@ A small local model (Pythia-160m by default) answers questions live — some cor
 ├── tests/                          # pytest suite, one file per module
 ├── notebooks/                      # Kaggle/Colab experiment notebooks (see §6.3 for status)
 ├── demo/                           # Streamlit live demo (see §6.4)
+│   └── requirements.txt            # streamlit + torch (CPU wheel) + transformers + datasets
 ├── paper/                          # arXiv paper source (paper.tex, references.bib)
 ├── results/                        # Committed benchmark JSON (see §5)
 ├── AGENT.md                        # Design notes, math reference, known limitations
-├── requirements.txt
-└── requirements-demo.txt           # streamlit + torch + transformers, for demo/ only
+└── requirements.txt
 ```
 
-Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real models), `datasets` (HaluEval), `anthropic` (data generation), `openai` (black-box demo), `chromadb`/`sentence-transformers` (embedding anomaly), `kaggle` (CI), and `streamlit` (`demo/`) are all optional and lazily imported/kept in a separate requirements file — tests that need them skip cleanly when they are absent.
+Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real models), `datasets` (HaluEval), `anthropic` (data generation), `openai` (black-box demo), `chromadb`/`sentence-transformers` (embedding anomaly), and `kaggle` (CI) are all optional and lazily imported — tests that need them skip cleanly when they are absent. `demo/`'s dependencies live in `demo/requirements.txt`, not the root file — deliberately, and not just for hygiene: Streamlit Community Cloud auto-detects a requirements file next to the app's main module before falling back to the repo root, so this placement is what makes a zero-config cloud deploy actually install torch (see [demo/README.md](demo/README.md#deploying-streamlit-community-cloud)).
 
 ---
 

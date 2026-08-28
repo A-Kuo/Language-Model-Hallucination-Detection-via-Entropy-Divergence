@@ -1,8 +1,0 @@
-# Streamlit hallucination-detection demo (demo/app.py) — kept separate from
-# requirements.txt so the core package stays torch/transformers-free unless
-# you actually want the demo. See demo/README.md.
-
-streamlit>=1.30.0
-torch>=2.0.0
-transformers>=4.30.0
-datasets>=2.14.0

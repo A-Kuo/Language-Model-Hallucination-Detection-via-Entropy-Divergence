@@ -1,0 +1,16 @@
+# Streamlit Community Cloud auto-detects a requirements file in the SAME
+# directory as the main module (demo/app.py) before falling back to a
+# repo-root requirements.txt — this file must live here, not at repo root,
+# or Streamlit Cloud silently installs only the core numpy/scipy deps and
+# `import torch` fails (or the deploy stalls) with no obvious error.
+#
+# --extra-index-url pins torch to the CPU-only wheel (~200MB) instead of the
+# default CUDA build (~2GB+) — on a CPU-only host the CUDA build's extra
+# download is pure dead weight and is the single most common cause of a
+# Streamlit Cloud deploy hanging or timing out for a torch-based app.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+streamlit>=1.30.0
+torch>=2.0.0
+transformers>=4.30.0
+datasets>=2.14.0
