@@ -88,9 +88,11 @@ import matplotlib.pyplot as plt
 # two lines: hallucinated vs. not
 ```
 
-### 4. Fix one incomplete citation (1 hour)
-`yu2024attention` is marked TODO — either find the right paper or remove this citation.
-All other citations are verified.
+### 4. ~~Fix one incomplete citation~~ — done
+`yu2024attention` was an unverifiable placeholder (no such paper could be found).
+Removed; the claim it supported is now attributed to `chuang2024lookback` alone,
+plus two new citations for the spectral/frequency families (`binkowski2025spectral`,
+`qi2026frequency`) that extend that line of work in this repo's feature set.
 
 ### 5. Final proofread (2–3 hours)
 Remove all \TODO{} and \RESULT{} markers before submission.

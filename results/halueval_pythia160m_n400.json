@@ -1,0 +1,117 @@
+{
+  "timestamp": "2026-08-28T00:52:41.974215+00:00",
+  "model_name": "EleutherAI/pythia-160m",
+  "device": "cpu",
+  "num_samples_total": 400,
+  "num_samples_used": 400,
+  "num_failed": 0,
+  "num_hallucinated": 200,
+  "num_correct": 200,
+  "cv_results": {
+    "logistic": {
+      "auroc": 0.97275,
+      "ci": [
+        0.9545353004314765,
+        0.9869926366696821
+      ]
+    },
+    "mlp": {
+      "auroc": 0.9662,
+      "ci": [
+        0.94518592116408,
+        0.9826149328720913
+      ]
+    },
+    "calibrated_entropy": {
+      "auroc": 0.914875,
+      "ci": [
+        0.883854754449224,
+        0.9397644336979408
+      ]
+    },
+    "blackbox_topk": {
+      "auroc": 0.9304,
+      "ci": [
+        0.903791519611524,
+        0.9529371510830555
+      ]
+    }
+  },
+  "held_out": {
+    "logistic": {
+      "auroc": 0.9794285714285714,
+      "accuracy": 0.925,
+      "precision": 0.9178082191780822,
+      "recall": 0.9571428571428572,
+      "f1": 0.9370629370629371,
+      "false_positive_rate": 0.12,
+      "num_samples": 120,
+      "threshold": 0.5
+    },
+    "mlp": {
+      "auroc": 0.9797142857142858,
+      "accuracy": 0.9083333333333333,
+      "precision": 0.8933333333333333,
+      "recall": 0.9571428571428572,
+      "f1": 0.9241379310344828,
+      "false_positive_rate": 0.16,
+      "num_samples": 120,
+      "threshold": 0.5
+    }
+  },
+  "bilstm": {
+    "auroc": 0.986,
+    "accuracy": 0.9583333333333334,
+    "precision": 1.0,
+    "recall": 0.9285714285714286,
+    "f1": 0.962962962962963,
+    "false_positive_rate": 0.0,
+    "num_samples": 120,
+    "threshold": 0.5,
+    "ci": [
+      0.9664190476190476,
+      0.9988425925925926
+    ]
+  },
+  "ablation": {
+    "full_auroc": 0.9794285714285714,
+    "families": {
+      "entropy": {
+        "auroc": 0.9720000000000001,
+        "delta": 0.00742857142857134
+      },
+      "lookback": {
+        "auroc": 0.9554285714285715,
+        "delta": 0.02399999999999991
+      },
+      "frequency": {
+        "auroc": 0.9785714285714285,
+        "delta": 0.0008571428571428896
+      },
+      "spectral": {
+        "auroc": 0.9845714285714287,
+        "delta": -0.005142857142857227
+      },
+      "cross_layer_kl": {
+        "auroc": 0.9805714285714285,
+        "delta": -0.0011428571428571122
+      },
+      "entropy_token": {
+        "auroc": 0.9877142857142857,
+        "delta": -0.00828571428571423
+      }
+    }
+  },
+  "feature_importance_top10": {
+    "lb_ratio_entropy": 0.892023339019992,
+    "ent_std": 0.8336987684494763,
+    "lb_ratio_mean": 0.6745036218706073,
+    "spec_fiedler_mean": 0.4372794831267641,
+    "entropy_max": 0.43090949825392844,
+    "ent_mean": 0.407201957609039,
+    "entropy_std": 0.2876273372515638,
+    "freq_high_mean": 0.26702099528898027,
+    "lb_ratio_std": 0.2207093965640395,
+    "entropy_mean": 0.19772511195699904
+  }
+}

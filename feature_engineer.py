@@ -8,7 +8,7 @@ each operating on raw attention tensors (L, H, T, T):
     1. ENTROPY — Shannon entropy of attention distributions
     2. LOOKBACK RATIO — Context vs. generation attention (Chuang et al., EMNLP 2024)
     3. FREQUENCY DOMAIN — DFT high-frequency energy (Qi et al., 2026)
-    4. SPECTRAL — Laplacian eigenvalues of attention-as-graph (Barbero et al.)
+    4. SPECTRAL — Laplacian eigenvalues of attention-as-graph (Binkowski et al., EMNLP 2025)
     5. CROSS-LAYER KL — Divergence between consecutive layers
 
 Each family extracts a fixed-size feature vector. Concatenated, they form
@@ -420,7 +420,7 @@ class AttentionFeatureEngineer:
     Combines insights from:
         - Lookback Lens (Chuang et al., EMNLP 2024)
         - Frequency-Aware Attention (Qi et al., 2026)
-        - Laplacian Eigenvalue features (Barbero et al., 2025)
+        - Laplacian Eigenvalue features / LapEigvals (Binkowski et al., EMNLP 2025)
         - Foundational entropy + cross-layer KL divergence
     """
 

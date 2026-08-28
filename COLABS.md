@@ -1,5 +1,16 @@
 # Colab Notebooks — AED Hallucination Detection
 
+> **Status warning (read first).** The three notebooks indexed below produced the
+> numbers committed in `results/*.json` back in April 2026, using a standalone
+> `run_experiment.py` module that has since been removed during a repo
+> consolidation. **They currently fail on import and need porting to the present
+> `pipeline.py` / `detector.py` API before they will run again.** The results they
+> generated are still valid as a historical record — see README §5 — but do not
+> expect these links to execute as-is.
+>
+> For a working GPU path, use `notebooks/real_pipeline_benchmark/` via the Kaggle
+> runner (README §6.2) instead.
+
 > Click any badge below to launch the notebook in Google Colab (free T4 GPU tier).
 
 ---
@@ -7,7 +18,7 @@
 ## Primary Notebooks
 
 ### 🎯 GPU Benchmark — Full Paper Results
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/gpu_benchmark.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/notebooks/gpu_benchmark.ipynb)
 
 **Purpose:** Generate the actual numbers for the arXiv paper  
 **Runtime:** ~15 minutes on T4 GPU  
@@ -41,7 +52,7 @@ Latency:               38.49 ms/sample
 ---
 
 ### 📊 Ablation Study — Which Signal Matters?
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/ablation_study.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/notebooks/ablation_study.ipynb)
 
 **Purpose:** Fill Table 2 in the paper (ablation study)  
 **Runtime:** ~8 minutes on T4 GPU  
@@ -64,7 +75,7 @@ Full AED marginally outperforms entropy-only.
 ---
 
 ### 🔬 Quick Validation — CPU Mode
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/colab/quick_cpu_validation.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/A-Kuo/Language-Model-Hallucination-Detection-via-Entropy-Divergence/blob/main/notebooks/quick_cpu_validation.ipynb)
 
 **Purpose:** Validate the pipeline works without GPU (for CI/testing)  
 **Runtime:** ~3 minutes on CPU  

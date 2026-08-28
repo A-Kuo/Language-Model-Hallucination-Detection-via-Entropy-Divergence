@@ -6,7 +6,7 @@ Instructions for AI agents extending or maintaining this project.
 
 ## Research Foundations (Mathematical)
 
-Compressed reference — full derivations, "why this over alternatives" reasoning, and a defined notation table are in [README.md's "Mathematical Approach"](README.md#mathematical-approach). Notation here matches the README: `L` = number of layers, `H` = heads per layer, `T` = sequence length, `a` = an attention distribution (never the Laplacian — see item 4).
+Compressed reference — full derivations, "why this over alternatives" reasoning, and a defined notation table are in [README.md §4 "Method"](README.md#4-method). Notation here matches the README: `L` = number of layers, `H` = heads per layer, `T` = sequence length, `a` = an attention distribution (never the Laplacian — see item 4).
 
 ### 1. Shannon Entropy
 ```
@@ -25,7 +25,7 @@ X_k = DFT(a)     →     E_high = Σ_{k>T/2} |X_k|²
 ```
 Hallucinated tokens show high-frequency energy = fragmented grounding.
 
-### 4. Spectral / Laplacian — Barbero et al.
+### 4. Spectral / Laplacian — Binkowski et al., EMNLP 2025 (LapEigvals)
 ```
 Lap = D - W     →     eigenvalues λ₁ ≤ λ₂ ≤ ... ≤ λ_T
 ```
@@ -47,7 +47,7 @@ Computed from output logits directly (white-box, no attention needed).
 ```
 p(x) = w · isotonic(u(x)) + (1-w) · sigmoid(a·mahalanobis(x, μ_ref, Σ_ref) + b)
 ```
-`μ_ref`/`Σ_ref` are fit on the calibration set's correct-answer (y=0) examples only. This is the repo's main original contribution — see README.md's "Calibrated Entropy Divergence" section for the full rationale.
+`μ_ref`/`Σ_ref` are fit on the calibration set's correct-answer (y=0) examples only. This is the repo's main original contribution — see README.md §4.3 for the full rationale.
 
 ### 8. Top-K Logprob Entropy (black-box) — `blackbox_detector.py`
 Same entropy/margin/mass estimators as (6), computed only from the small top-K logprob list a commercial completions API returns — a documented lower bound on true entropy, not an approximation.
@@ -97,9 +97,9 @@ The refusal/known-entity competition is a discrete switch. Our logistic regressi
 - Add feature families from CHARM, Multi-View Attention papers
 - Integrate activation probing for circuit-level signals
 - Fit per-domain `CalibratedEntropyDetector` instances rather than one global calibration
-- Investigate why BiLSTM underperforms logistic regression on per-layer sequences (see README's "Research Limitations")
+- Re-benchmark BiLSTM vs logistic regression on per-layer sequences (see README §5 — two bugs that corrupted the original comparison have since been fixed)
 - Use larger local models (Llama-3, Mistral, Phi-3) for richer hallucination patterns
-- Semantic entropy / multi-sample UQ methods are deliberately out of scope here (this repo focuses on single-pass signals) — see `research/` digests for that track
+- Semantic entropy / multi-sample UQ methods are deliberately out of scope here (this repo focuses on single-pass signals) — see README §9 for that literature
 
 ---
 
@@ -107,7 +107,7 @@ The refusal/known-entity competition is a discrete switch. Our logistic regressi
 
 1. Chuang et al. (2024). *Lookback Lens.* EMNLP.
 2. Qi et al. (2026). *Frequency-Aware Attention.* arXiv:2602.18145.
-3. Barbero et al. (2025). *Spectral Features of Attention Maps.* arXiv:2502.17598.
+3. Binkowski, J., Janiak, D., Sawczyn, A., Gabrys, B., Kajdanowicz, T. (2025). *Hallucination Detection in LLMs Using Spectral Features of Attention Maps.* EMNLP 2025. arXiv:2502.17598.
 4. Multi-View Attention (2025). arXiv:2504.04335.
 5. CHARM (2025). *Neural Message-Passing on Attention Graphs.* arXiv:2509.24770.
 6. Shannon (1948). *A Mathematical Theory of Communication.*

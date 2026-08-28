@@ -10,6 +10,10 @@ build/
 *.egg
 MANIFEST
 
+# Agent
+.claude/
+AGENT.md
+
 # Secrets and credentials (defense in depth)
 .env
 .env.*
@@ -66,7 +70,5 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
-
-AGENT.md
 
 paper/PAPER_ROADMAP.md

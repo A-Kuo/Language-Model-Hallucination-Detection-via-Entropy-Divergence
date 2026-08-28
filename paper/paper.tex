@@ -91,10 +91,11 @@ and may themselves introduce errors from imperfect retrieval.
 or output distributions—to estimate uncertainty without external calls 
 \citep{kadavath2022language, kuhn2023semantic, chuang2023dola}.
 
-We focus on internal methods and specifically on attention-weight-based signals, 
-following \citet{sun2024lookback} (Lookback Lens) and 
-\citet{yu2024attention} who showed that attention patterns at the last 
-generated token correlate with factual accuracy.
+We focus on internal methods and specifically on attention-weight-based signals,
+following \citet{chuang2024lookback} (Lookback Lens), who showed that attention
+patterns at the last generated token correlate with factual accuracy, and
+extending this line of work with spectral \citep{binkowski2025spectral} and
+frequency-domain \citep{qi2026frequency} attention features.
 
 Our contribution is threefold:
 \begin{enumerate}
@@ -141,7 +142,7 @@ without requiring multiple sampling passes.
 
 \subsection{Attention-Based Hallucination Signals}
 
-\citet{sun2024lookback} (Lookback Lens) compute the ratio of attention 
+\citet{chuang2024lookback} (Lookback Lens) compute the ratio of attention 
 to context tokens vs. generated tokens and show this ratio discriminates 
 hallucinated from faithful outputs with AUROC around 0.86 on TruthfulQA.
 \citet{chuang2023dola} manipulate attention-weight-derived representations 
@@ -308,7 +309,7 @@ Confirm 50/50 class balance or report actual balance.}
 
 \paragraph{Baselines:}
 \begin{itemize}
-  \item \textbf{Lookback Ratio} \citep{sun2024lookback}: context attention 
+  \item \textbf{Lookback Ratio} \citep{chuang2024lookback}: context attention 
     ratio at the final token, logistic regression classifier.
   \item \textbf{Logistic Regression on AED global features}: our entropy+KL 
     features with the same logistic regression classifier as Lookback Ratio.
