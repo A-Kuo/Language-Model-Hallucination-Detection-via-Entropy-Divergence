@@ -7,7 +7,14 @@
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/transformers)
 [![Status](https://img.shields.io/badge/Status-Research%20Prototype-orange.svg)]()
 
-> *Just because you say it with confidence doesn't make it true. A model that is confidently wrong is more dangerous than a model that admits uncertainty. Given LLM uncertainty is a constant, the question is whether we can measure the moment it happens.*
+> *Just because you say it with confidence doesn't make it true.*
+
+A model that is confidently wrong is more dangerous than a model that admits uncertainty. Given LLM uncertainty is a constant, the question is whether we can measure the moments before it happens.
+
+Before Gemini, we had [Bard:](https://www.reuters.com/technology/google-ai-chatbot-bard-offers-inaccurate-information-company-ad-2023-02-08/)
+
+<img width="518" height="50" alt="image" src="https://github.com/user-attachments/assets/ea6d7aa6-a87f-4ec2-8d78-ba2038a6d46c" />
+
 
 ---
 
