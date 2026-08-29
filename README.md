@@ -7,7 +7,7 @@
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/transformers)
 [![Status](https://img.shields.io/badge/Status-Research%20Prototype-orange.svg)]()
 
-> *Just because you say it with confidence doesn't make it true.*
+> *Just because you say it with confidence, doesn't make it true.*
 
 A model that is confidently wrong is more dangerous than a model that admits uncertainty. Given LLM uncertainty is a constant, the question is whether we can measure the moments before it happens.
 
@@ -437,7 +437,7 @@ Ordered roughly by what would most change the picture:
 
 ---
 
-## 9. Related work
+## 9. Related works (Bibliography)
 
 **Foundations — information theory and uncertainty**
 1. Shannon, C.E. (1948). [A Mathematical Theory of Communication](https://ieeexplore.ieee.org/document/6773024). *Bell System Technical Journal* 27(3):379–423.
@@ -486,6 +486,14 @@ Ordered roughly by what would most change the picture:
 32. Tenney, I., Das, D. & Pavlick, E. (2019). [BERT Rediscovers the Classical NLP Pipeline](https://aclanthology.org/P19-1452/). *ACL 2019.* — layer-wise syntactic→semantic progression.
 33. Batson, J. et al. (2025). [On the Biology of a Large Language Model](https://transformer-circuits.pub/2025/attribution-graphs/biology.html). *Anthropic.* — the circuit-level account of hallucination behind §8.1.
 34. Biderman, S. et al. (2023). [Pythia: A Suite for Analyzing Large Language Models](https://arxiv.org/abs/2304.01373). *ICML 2023.* — the default model used here.
+
+
+
+Special thanks to UW Madison faculty (present and former) for teaching:
+
+[Generative Models](https://github.com/AdaptInfer/dgm-fall-2025)
+
+[LLMs From Scratch](https://github.com/rasbt/LLMs-from-scratch)
 
 ---
 
