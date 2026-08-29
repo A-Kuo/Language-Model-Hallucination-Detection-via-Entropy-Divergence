@@ -142,7 +142,7 @@ $$D_{\mathrm{KL}}^{l} = \frac{1}{H}\sum_{h=1}^{H} D_{\mathrm{KL}}\!\left(\mathbf
 | `topk_entropy_mean` | The same truncated estimator the black-box detector is forced to use — computed here against known full-vocab entropy so the approximation can be validated |
 | `margin_mean` | Top-1 minus top-2 logprob gap — a different functional form that ignores the tail, so it can disagree with entropy when a long tail inflates it |
 
-$$H_t = -\sum_{v \in V} p_t(v) \log p_t(v), \qquad \mathrm{perplexity} = \exp\!\Big(\operatorname{mean}_t\big(-\log p_t(v_t^{\ast})\big)\Big)$$
+$$H_t = -\sum_{v \in V} p_t(v) \log p_t(v), \qquad \mathrm{perplexity} = \exp\!\Big(\mathrm{mean}_t\big(-\log p_t(v_t^{\ast})\big)\Big)$$
 
 where $v_t^{\ast}$ is the token actually realized at position $t$ — so perplexity depends on what was said, while $H_t$ depends only on what could have been said.
 
