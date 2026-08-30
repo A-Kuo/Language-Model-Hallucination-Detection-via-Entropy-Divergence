@@ -2,12 +2,14 @@
 
 **Detecting hallucinations in LLM outputs using single-pass entropy statistics and divergence from calibrated entropy distributions.**
 
+
+> *Just because you say it with confidence, doesn't make it true.*
+
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/transformers)
 [![Status](https://img.shields.io/badge/Status-Research%20Prototype-orange.svg)]()
-
-> *Just because you say it with confidence, doesn't make it true.*
+---
 
 A model that is confidently wrong is more dangerous than a model that admits uncertainty. Given LLM uncertainty is a constant, the question is whether we can measure the moments before it happens.
 
