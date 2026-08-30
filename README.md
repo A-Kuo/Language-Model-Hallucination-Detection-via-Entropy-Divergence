@@ -16,42 +16,54 @@ A model that is confidently wrong is more dangerous than a model that admits unc
 Remember [Bard?](https://www.reuters.com/technology/google-ai-chatbot-bard-offers-inaccurate-information-company-ad-2023-02-08/) We had that before Google Gemini
 
 <img width="518" height="50" alt="image" src="https://github.com/user-attachments/assets/ea6d7aa6-a87f-4ec2-8d78-ba2038a6d46c" />
+
 ---
+
 ## Contents
 
-- [1. Abstract](#1-abstract)
-- [2. Intuition](#2-intuition-what-entropy-is-and-why-it-matters-here)
-- [3. Infrastructure](#3-infrastructure)
-- [4. Method](#4-method)
-  - [Notation](#notation)
-  - [4.1 Attention Features](#41-attention-features-feature_engineerpy)
-  - [4.2 Token-level Entropy Baselines](#42-token-level-entropy-baselines-entropy_baselinespy)
+[1. Abstract](#1-abstract)
+
+[2. Intuition](#2-intuition-what-entropy-is-and-why-it-matters-here)
+
+[3. Infrastructure](#3-infrastructure)
+
+[4. Method](#4-method)
+- [Notation](#notation)
+- [4.1 Attention Features](#41-attention-features-feature_engineerpy)
+- [4.2 Token-level Entropy Baselines](#42-token-level-entropy-baselines-entropy_baselinespy)
   - [4.3 Calibrated Entropy Divergence](#43-calibrated-entropy-divergence--the-main-contribution-calibrated_entropy_detectorpy)
   - [4.4 Black-box Top-K Detector (`blackbox_detector.py`)](#44-black-box-top-k-detector-blackbox_detectorpy)
   - [4.5 A note on AUROC](#45-a-note-on-auroc-two-estimators-one-quantity)
-- [5. Results](#5-results)
-  - [5.1 Headline](#51-headline-two-models-matched-pair-halueval)
-  - [5.2 The Matched-Pair Fix](#52-the-matched-pair-fix--and-a-real-surprise)
-  - [5.3 The Calibration Fix](#53-the-calibration-fix-from-a-negative-result-to-parity)
-  - [5.4 3-Way Decision Routing](#54-3-way-decision-routing)
-  - [5.5 Feature-Family Ablation Across Two Models](#55-feature-family-ablation-across-two-models)
-  - [5.6 BiLSTM](#56-bilstm-a-second-data-point-undercuts-the-earlier-optimism)
-  - [5.7 Black-box vs. White-box, Per Model](#57-black-box-vs-white-box-per-model)
-  - [5.8 Latency](#58-latency)
-  - [5.9 Historical benchmark — superseded, kept for provenance only](#59-historical-benchmark--superseded-kept-for-provenance-only)
-  - [5.10 Caveats — read before citing any of this](#510-caveats--read-before-citing-any-of-this)
-- [6. Running Experiments](#6-running-experiments)
-  - [6.1 Local CLI](#61-local-cli)
-  - [6.2 Kaggle GPU Runner](#62-kaggle-gpu-runner)
-  - [6.3 Notebooks](#63-notebooks)
-  - [6.4 Interactive Demo](#64-interactive-demo)
-- [7. Repository Layout](#7-repository-layout)
-- [8. Limitations](#8-limitations-and-open-questions)
-  - [8.1 Known Limitations](#81-known-limitations)
-  - [8.2 Open Questions](#82-open-questions)
-- [9. Related Work](#9-related-works-(bibliograph))
-- [10. Citation](#10-citation)
-- [License](#license)
+
+[5. Results](#5-results)
+- [5.1 Headline](#51-headline-two-models-matched-pair-halueval)
+- [5.2 The Matched-Pair Fix](#52-the-matched-pair-fix--and-a-real-surprise)
+- [5.3 The Calibration Fix](#53-the-calibration-fix-from-a-negative-result-to-parity)
+- [5.4 3-Way Decision Routing](#54-3-way-decision-routing)
+- [5.5 Feature-Family Ablation Across Two Models](#55-feature-family-ablation-across-two-models)
+- [5.6 BiLSTM](#56-bilstm-a-second-data-point-undercuts-the-earlier-optimism)
+- [5.7 Black-box vs. White-box, Per Model](#57-black-box-vs-white-box-per-model)
+- [5.8 Latency](#58-latency)
+- [5.9 Historical benchmark — superseded, kept for provenance only](#59-historical-benchmark--superseded-kept-for-provenance-only)
+- [5.10 Caveats — read before citing any of this](#510-caveats--read-before-citing-any-of-this)
+
+[6. Running Experiments](#6-running-experiments)
+- [6.1 Local CLI](#61-local-cli)
+- [6.2 Kaggle GPU Runner](#62-kaggle-gpu-runner)
+- [6.3 Notebooks](#63-notebooks)
+- [6.4 Interactive Demo](#64-interactive-demo)
+
+[7. Repository Layout](#7-repository-layout)
+
+[8. Limitations](#8-limitations-and-open-questions)
+- [8.1 Known Limitations](#81-known-limitations)
+- [8.2 Open Questions](#82-open-questions)
+
+[9. Related Work](#9-related-works-(bibliograph))
+
+[10. Citation](#10-citation)
+
+[License](#license)
 
 ---
 
