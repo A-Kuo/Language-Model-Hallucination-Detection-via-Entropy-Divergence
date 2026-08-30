@@ -11,10 +11,45 @@
 
 A model that is confidently wrong is more dangerous than a model that admits uncertainty. Given LLM uncertainty is a constant, the question is whether we can measure the moments before it happens.
 
-Before Gemini, we had [Bard:](https://www.reuters.com/technology/google-ai-chatbot-bard-offers-inaccurate-information-company-ad-2023-02-08/)
+Remember [Bard?](https://www.reuters.com/technology/google-ai-chatbot-bard-offers-inaccurate-information-company-ad-2023-02-08/) We had that before Google Gemini
 
 <img width="518" height="50" alt="image" src="https://github.com/user-attachments/assets/ea6d7aa6-a87f-4ec2-8d78-ba2038a6d46c" />
+---
+## Contents
 
+- [1. Abstract](#1-abstract)
+- [2. Intuition](#2-intuition-what-entropy-is-and-why-it-matters-here)
+- [3. Infrastructure](#3-infrastructure)
+- [4. Method](#4-method)
+  - [Notation](#notation)
+  - [4.1 Attention Features](#41-attention-features-feature_engineerpy)
+  - [4.2 Token-level Entropy Baselines](#42-token-level-entropy-baselines-entropy_baselinespy)
+  - [4.3 Calibrated Entropy Divergence](#43-calibrated-entropy-divergence--the-main-contribution-calibrated_entropy_detectorpy)
+  - [4.4 Black-box Top-K Detector (`blackbox_detector.py`)](#44-black-box-top-k-detector-blackbox_detectorpy)
+  - [4.5 A note on AUROC](#45-a-note-on-auroc-two-estimators-one-quantity)
+- [5. Results](#5-results)
+  - [5.1 Headline](#51-headline-two-models-matched-pair-halueval)
+  - [5.2 The Matched-Pair Fix](#52-the-matched-pair-fix--and-a-real-surprise)
+  - [5.3 The Calibration Fix](#53-the-calibration-fix-from-a-negative-result-to-parity)
+  - [5.4 3-Way Decision Routing](#54-3-way-decision-routing)
+  - [5.5 Feature-Family Ablation Across Two Models](#55-feature-family-ablation-across-two-models)
+  - [5.6 BiLSTM](#56-bilstm-a-second-data-point-undercuts-the-earlier-optimism)
+  - [5.7 Black-box vs. White-box, Per Model](#57-black-box-vs-white-box-per-model)
+  - [5.8 Latency](#58-latency)
+  - [5.9 Historical benchmark — superseded, kept for provenance only](#59-historical-benchmark--superseded-kept-for-provenance-only)
+  - [5.10 Caveats — read before citing any of this](#510-caveats--read-before-citing-any-of-this)
+- [6. Running Experiments](#6-running-experiments)
+  - [6.1 Local CLI](#61-local-cli)
+  - [6.2 Kaggle GPU Runner](#62-kaggle-gpu-runner)
+  - [6.3 Notebooks](#63-notebooks)
+  - [6.4 Interactive Demo](#64-interactive-demo)
+- [7. Repository Layout](#7-repository-layout)
+- [8. Limitations](#8-limitations-and-open-questions)
+  - [8.1 Known Limitations](#81-known-limitations)
+  - [8.2 Open Questions](#82-open-questions)
+- [9. Related Work](#9-related-works-(bibliograph))
+- [10. Citation](#10-citation)
+- [License](#license)
 
 ---
 
@@ -70,9 +105,7 @@ This is grounded in information theory: Shannon entropy is the expected surprise
 
 ---
 
-## 3. What this repository implements
-
-Four things:
+## 3. Infrastructure
 
 1. **Feature extraction** that summarizes internal uncertainty.
    - Token-level entropy from output logits (`entropy_baselines.py`)
@@ -268,7 +301,7 @@ Drop one family, retrain logistic regression on the rest (full 24D model: Pythia
 
 An earlier draft of this README, working from Pythia numbers alone, said the BiLSTM was "no longer obviously worse" than the linear baseline after two corrupting bugs were fixed (label/sequence misalignment; a `context_length` error). That reads differently with a second model in hand: on Qwen, BiLSTM is clearly *behind* both flat detectors (0.9539 vs ~0.972), the opposite pattern from Pythia. Neither held-out split is cross-validated, so neither number alone should be over-read — but two models pointing in opposite directions is stronger evidence of instability than either one pointing anywhere. The honest summary is now "inconsistent across models," not "recovering," and a proper CV comparison remains the actual open item.
 
-### 5.7 Black-box vs. white-box, per model
+### 5.7 Black-box vs. White-box, Per Model
 
 `BlackBoxEntropyDetector` — top-5 logprobs only, no attention, no full-vocabulary distribution — scores 0.9285 on Pythia and 0.9005 on Qwen (§5.1), both clearly behind the white-box detectors but well above chance. The gap widens on Qwen, plausibly because chat-template-formatted generation concentrates more probability mass in the visible top-5 for a well-instruction-tuned model's more templated answers, making the truncated-entropy lower bound (§4.4) a worse approximation of the true distribution's shape. That is a plausible mechanism, not a confirmed one — it has not been tested directly (e.g. by measuring top-5 mass coverage per model) and should be read as a hypothesis for future work, not a finding.
 
@@ -276,7 +309,7 @@ An earlier draft of this README, working from Pythia numbers alone, said the BiL
 
 38.49 ms/sample on a T4 GPU (from the historical benchmark, §5.9 — a comparable number has not yet been re-measured on the current pipeline). The comparison that matters: semantic-entropy methods ([Farquhar et al., 2024](https://www.nature.com/articles/s41586-024-07421-0)) need 5–10 generations per query. Single-pass detection is roughly an order of magnitude cheaper, which is the whole argument for accepting a weaker signal.
 
-### 5.9 Historical benchmark — superseded, kept for provenance only
+### 5.9 Historical Benchmark — superseded, kept for provenance only
 
 `results/halueval_pythia160m_n400.json` (disjoint-question data, old detector defaults) and `results/benchmark_results.json` / `results/ablation_results.json` (T4 GPU, April 2026, an earlier two-signal "AED" configuration — per-head entropy + cross-layer KL only — run through notebooks since removed as dead wrappers around a deleted module, §6.3) are no longer the numbers to cite. They remain committed because §5.2 and §5.5 directly compare against them to show what changed and why; do not use them as current evidence on their own. `results/benchmark_results_cpu_quick.json` (GPT-2, 50 samples) exists only to prove the pipeline executes.
 
@@ -334,7 +367,7 @@ pytest tests
 
 Passing `--results <path>` writes a structured JSON summary (per-detector CV AUROC with bootstrap CIs, held-out metrics, ablation deltas, feature importances) so runs stay comparable.
 
-### 6.2 Kaggle GPU runner — the current workflow
+### 6.2 Kaggle GPU Runner
 
 GPU work runs on Kaggle, triggered manually through GitHub Actions. **It never fires on push** — GPU quota is finite, so runs happen only on explicit command.
 
@@ -364,7 +397,7 @@ kaggle kernels status <your-username>/real-pipeline-benchmark
 
 Three other notebooks (`gpu_benchmark.ipynb`, `ablation_study.ipynb`, `quick_cpu_validation.ipynb`) generated §5.9's historical numbers back when the repo had a separate `run_experiment.py` module. That module was removed during consolidation, the notebooks were thin wrappers around it with no algorithmic content of their own, and the current 5-family pipeline strictly supersedes the two-signal feature set they exercised — so rather than porting dead wrappers, they were removed. `results/benchmark_results.json` and `results/ablation_results.json` remain committed as the historical record §5.9 already documents.
 
-### 6.4 Interactive demo
+### 6.4 Interactive Demo
 
 ```bash
 pip install -r demo/requirements.txt
@@ -377,7 +410,7 @@ A small local model (Pythia-160m by default) answers questions live — some cor
 
 ---
 
-## 7. Repository layout
+## 7. Repository Layout
 
 ```text
 .
@@ -407,9 +440,9 @@ Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real mod
 
 ---
 
-## 8. Limitations and open questions
+## 8. Limitations and Open Questions
 
-### 8.1 Known limitations
+### 8.1 Known Limitations
 
 | Limitation | Why it happens | Current mitigation |
 |---|---|---|
@@ -423,7 +456,7 @@ Core dependencies are `numpy` and `scipy` only. `torch`/`transformers` (real mod
 
 **The confident-confabulation limitation is the most fundamental one.** Anthropic's circuit-tracing work ([Batson et al., 2025](https://transformer-circuits.pub/2025/attribution-graphs/biology.html)) locates hallucination in a competition between a refusal-to-speculate circuit and a known-entity detector. Every feature in this repo measures downstream symptoms of that competition, not the circuit itself — so a model doing confident motivated reasoning produces focused, low-entropy attention and scores as reliable. Closing that gap needs activation-level probing, e.g. [Cross-Layer Attention Probing](https://arxiv.org/abs/2509.09700), not better attention statistics.
 
-### 8.2 Open questions
+### 8.2 Open Questions
 
 Ordered roughly by what would most change the picture:
 
@@ -437,7 +470,7 @@ Ordered roughly by what would most change the picture:
 
 ---
 
-## 9. Related works (Bibliography)
+## 9. Related Works (Bibliography)
 
 **Foundations — information theory and uncertainty**
 1. Shannon, C.E. (1948). [A Mathematical Theory of Communication](https://ieeexplore.ieee.org/document/6773024). *Bell System Technical Journal* 27(3):379–423.
