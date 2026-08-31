@@ -6,7 +6,7 @@
 > *Just because you say it with confidence, doesn't make it true.*
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?&logo=python&logoColor=blue&style=plastic)](https://www.python.org/downloads/release/python-3120/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0-E8A051?logo=pytorch&&logoColor=E8A051&style=plastic)](https://pytorch.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0-orange?logo=pytorch&&logoColor=orange&style=plastic)](https://pytorch.org)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow?logo=huggingface&style=plastic)](https://huggingface.co/transformers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-red?style=plastic&logo=mit)](https://en.wikipedia.org/wiki/MIT_License)
 ---
