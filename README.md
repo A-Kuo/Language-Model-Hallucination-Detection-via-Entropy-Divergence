@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/transformers)
-[![Status](https://img.shields.io/badge/Status-Research%20Prototype-orange.svg)]()
+[![Project Type](https://img.shields.io/badge/AI-Research%20-orange.svg)]()
 ---
 
 A model that is confidently wrong is more dangerous than a model that admits uncertainty. Given LLM uncertainty is a constant, the question is whether we can measure the moments before it happens.
