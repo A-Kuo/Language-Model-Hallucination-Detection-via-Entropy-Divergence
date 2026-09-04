@@ -1,0 +1,201 @@
+{
+  "timestamp": "2026-09-04T16:27:29.583124+00:00",
+  "model_name": "EleutherAI/pythia-160m",
+  "device": "cpu",
+  "num_samples_total": 400,
+  "num_calibration": 220,
+  "num_benchmark": 180,
+  "num_benchmark_used": 180,
+  "num_failed": 0,
+  "calibrate_with_context": true,
+  "calibration_num_correct": 23,
+  "calibration_num_hallucinated": 197,
+  "agent": {
+    "num_samples": 180,
+    "action_counts": {
+      "answer": 6,
+      "retrieve": 0,
+      "abstain": 174
+    },
+    "task_success_rate": 0.5111111111111111,
+    "answer_accuracy": 0.0,
+    "retrieval_rate": 0.0,
+    "abstain_rate": 0.9666666666666667,
+    "abstain_precision": 0.5287356321839081,
+    "abstain_recall": 0.9484536082474226,
+    "mean_latency_s": 0.5126020377783183
+  },
+  "calibration_aurc": 0.2646341885000869,
+  "example_traces": [
+    {
+      "query": "Which entity did not develop the principles of European Union law?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.9989863559823107
+      },
+      "latency_s": 0.516711900010705,
+      "sample_id": "5ad14468645df0001a2d148a"
+    },
+    {
+      "query": "Who has limited productive potential when faced with less access to education?",
+      "is_answerable": true,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": false,
+      "scores": {
+        "no_context": 0.9983862458584216
+      },
+      "latency_s": 0.5247434000484645,
+      "sample_id": "5727f05b4b864d190016406b"
+    },
+    {
+      "query": "How many Huguenots were in France in the early 18th century?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.985760952753552
+      },
+      "latency_s": 0.5450908000348136,
+      "sample_id": "5ad24057d7d075001a428930"
+    },
+    {
+      "query": "Where does the centripetal force come from?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.935906986633329
+      },
+      "latency_s": 0.4910577000118792,
+      "sample_id": "5ad288e1d7d075001a429971"
+    },
+    {
+      "query": "Which islands compise a larger number of electors?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.9997882538794602
+      },
+      "latency_s": 0.4845147000160068,
+      "sample_id": "5ad0431077cf76001a686f30"
+    },
+    {
+      "query": "Who has an emergency supply of O?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.999951561925019
+      },
+      "latency_s": 0.4751739000203088,
+      "sample_id": "5ad26000d7d075001a428faf"
+    },
+    {
+      "query": "What was Sky Travel later rebranded as?",
+      "is_answerable": true,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": false,
+      "scores": {
+        "no_context": 0.999417599605823
+      },
+      "latency_s": 0.49238160002278164,
+      "sample_id": "57094b4f9928a814004714fa"
+    },
+    {
+      "query": "When did the y. pestis reach England?",
+      "is_answerable": true,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": false,
+      "scores": {
+        "no_context": 0.9998006787642867
+      },
+      "latency_s": 0.4910509999608621,
+      "sample_id": "57264f18f1498d1400e8dbb2"
+    },
+    {
+      "query": "The Presiding Officer tries the achieve a balance between similar viewpoints and whom?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.9964060514853607
+      },
+      "latency_s": 0.5072122999699786,
+      "sample_id": "5ad02fdf77cf76001a686d98"
+    },
+    {
+      "query": " When did Great Britain gain its colonies in North America?",
+      "is_answerable": false,
+      "has_context_available": true,
+      "action_sequence": [
+        "abstain"
+      ],
+      "final_answer": null,
+      "correct": null,
+      "groundedness": null,
+      "task_success": true,
+      "scores": {
+        "no_context": 0.9359544504602368
+      },
+      "latency_s": 0.4853133999858983,
+      "sample_id": "5ad03a1a77cf76001a686e6d"
+    }
+  ]
+}
