@@ -14,6 +14,17 @@ MANIFEST
 .claude/
 AGENT.md
 
+# Agent-routing MVP (local-only development, not committed/cloud-accessible)
+/agent/
+/benchmarks/
+/experiments/
+results/agent_routing_*.json
+tests/test_router.py
+tests/test_tools.py
+tests/test_benchmarks_schemas.py
+tests/test_loaders.py
+tests/test_run_benchmark.py
+
 # Secrets and credentials (defense in depth)
 .env
 .env.*
