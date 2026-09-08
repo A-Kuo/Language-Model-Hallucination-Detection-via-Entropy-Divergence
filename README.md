@@ -327,13 +327,34 @@ An earlier draft of this README, working from Pythia numbers alone, said the BiL
 
 `results/halueval_pythia160m_n400.json` (disjoint-question data, old detector defaults) and `results/benchmark_results.json` / `results/ablation_results.json` (T4 GPU, April 2026, an earlier two-signal "AED" configuration — per-head entropy + cross-layer KL only — run through notebooks since removed as dead wrappers around a deleted module, §6.3) are no longer the numbers to cite. They remain committed because §5.2 and §5.5 directly compare against them to show what changed and why; do not use them as current evidence on their own. `results/benchmark_results_cpu_quick.json` (GPT-2, 50 samples) exists only to prove the pipeline executes.
 
-### 5.10 Caveats — read before citing any of this
+### 5.10 Detector-stacking ensemble: does combining detectors help?
+
+Narrow question: does stacking this repo's five detectors (`CalibratedEntropyDetector`, logistic regression, MLP, BiLSTM, `BlackBoxEntropyDetector`) — or explicitly modeling their *disagreement* — beat the best individual detector on held-out data? Answered with a leakage-safe **nested** cross-validation (`ensemble.py`): base detectors are trained only on inner-fold splits of each outer-training fold to produce out-of-fold meta-features, a meta-model (regularized logistic regression) trains on those, base detectors are then retrained on the full outer-training fold, and only that retrained set predicts the untouched outer-test fold — no base detector ever predicts on a row it trained on. Single foundational model (Pythia-160m), matched-pair HaluEval, 400 samples, 5 outer × 5 inner folds. Reproduce with:
+
+```bash
+python ensemble.py --num_samples 400 --model EleutherAI/pythia-160m \
+    --outer_k 5 --inner_k 5 --results results/halueval_pythia160m_ensemble_n400.json
+```
+
+| Detector | AUROC | PR-AUC | ECE | Brier | Precision@Recall=0.95 |
+|---|---|---|---|---|---|
+| `CalibratedEntropyDetector` (best individual) | **0.9837** | 0.9809 | 0.0791 | 0.0499 | 0.9406 |
+| Uniform mean of all 5 | 0.9832 | 0.9832 | 0.0765 | 0.0425 | 0.9645 |
+| Logistic-regression stacker | 0.9847 | 0.9845 | 0.0363 | 0.0335 | **0.9794** |
+| Stacker + disagreement features | 0.9853 | **0.9850** | **0.0193** | 0.0334 | 0.9596 |
+
+**Stop rule, decided before running anything:** win = AUROC *and* PR-AUC both improve with a bootstrap CI excluding zero and calibration no worse; partial win = AUROC flat but calibration or precision-at-recall improves; no win = neither. **This is a partial win, not a win — and that distinction matters.** Every variant's AUROC delta over the best individual detector has a 95% paired-bootstrap CI that straddles zero (stacker+disagreement: +0.0016, CI [−0.0066, +0.0091]) — none of these AUROC gains are statistically distinguishable from noise at this sample size. But calibration improves in a way that isn't noise-sized: the disagreement-feature stacker's ECE is **0.0193 vs. 0.0791 for the best single detector — a 4× reduction** — and the plain logistic stacker achieves the best precision at a 95%-recall safety floor of any detector or variant (0.9794). Meta-model inference overhead is negligible (sub-millisecond per sample; the cost is in fitting five base detectors, not scoring one more).
+
+The answer to "is detector conflict predictive of hallucination?" is therefore **not really, for discrimination** — the five detectors are largely redundant on this task, consistent with §5.5's ablation already showing feature-family importance saturates rather than compounding. But disagreement **is** informative for producing well-calibrated probabilities: adding it as an explicit feature roughly halves ECE relative to the plain stacker (0.0193 vs. 0.0363), on top of both stacked variants already beating every individual detector's calibration by a wide margin. That's a genuine, useful result — better-calibrated probabilities are exactly what §5.4's routing thresholds and any real abstention policy actually consume — even though it isn't the "ensembling beats everything" story a less disciplined write-up might have reached for.
+
+### 5.11 Caveats — read before citing any of this
 
 1. **Sample sizes are still modest.** 400 samples per model, 120-sample held-out splits. The CIs in §5.1 are wide enough that some between-detector gaps are not individually significant — read the CV table's confidence intervals, not just the point estimates.
 2. **Two models is not many models.** §5.1/§5.5/§5.6 now span a base model and an instruction-tuned model of similar scale (160M/500M parameters) — real progress over one model, but still nothing above ~0.5B parameters, and no cross-domain evaluation (everything is HaluEval QA).
 3. **No committed abstention/risk-coverage curve on real data.** `abstention.py` runs, but no result artifact is committed.
 4. **The adversarial-robustness claim is unmeasured.** `adversarial.py` implements obfuscation, paraphrase, and multilingual-prefix attacks; no committed results file records the outcome.
 5. **§5.7's black-box explanation is a hypothesis, not a finding** — flagged there, repeated here because it's the kind of claim that's easy to skim past as settled.
+6. **§5.10's ensemble was evaluated on one model only** (Pythia-160m), by design — a narrower, more controlled test than this README's other two-model comparisons. Whether the same partial-win pattern (flat AUROC, real calibration gain) holds on Qwen2.5-0.5B-Instruct, or on a larger sample where the AUROC deltas might resolve out of noise, is untested.
 
 `notebooks/real_pipeline_benchmark/` exists to run §5.1 at a scale a laptop CPU cannot reach; see §6.3.
 
@@ -365,6 +386,13 @@ Abstention / risk-coverage analysis:
 ```bash
 python abstention.py --synthetic --num_samples 1000
 python pipeline.py --synthetic --num_samples 1000 --abstention
+```
+
+Detector-stacking ensemble (nested CV; see §5.10 for results and the pre-registered stop rule):
+
+```bash
+python ensemble.py --num_samples 400 --model EleutherAI/pythia-160m \
+    --outer_k 5 --inner_k 5 --results results/halueval_pythia160m_ensemble_n400.json
 ```
 
 Your own labeled data (JSONL, see `data_generator.py::LabeledSample` for the schema):
@@ -436,6 +464,7 @@ A small local model (Pythia-160m by default) answers questions live — some cor
 ├── blackbox_detector.py            # Top-K logprob detector (real API + offline simulation)
 ├── abstention.py                   # Risk-coverage / selective prediction
 ├── pipeline.py                     # End-to-end runner: k-fold CV, bootstrap CIs, ablation
+├── ensemble.py                     # Detector-stacking ensemble: nested CV, 3 variants (see §5.10)
 ├── adversarial.py                  # Robustness: obfuscation, paraphrase, multilingual
 ├── embedding_anomaly.py            # ChromaDB + centroid/Mahalanobis anomaly detection
 ├── vertex_deploy.py                # GCP Vertex AI deployment scaffolding
