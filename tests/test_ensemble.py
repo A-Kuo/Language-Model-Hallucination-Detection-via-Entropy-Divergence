@@ -20,6 +20,7 @@ from ensemble import (
     paired_bootstrap_delta_ci,
     precision_at_recall,
     precision_recall_curve_for_hallucination,
+    _active_detector_names,
     _stratified_folds,
 )
 
@@ -102,8 +103,29 @@ def test_nested_cv_stacking_runs_end_to_end(variant):
     )
     assert result["ensemble_probs"].shape == y.shape
     assert np.all((result["ensemble_probs"] >= 0) & (result["ensemble_probs"] <= 1))
-    for name in BASE_DETECTOR_NAMES:
+    # Not BASE_DETECTOR_NAMES directly -- BiLSTM is absent when torch isn't
+    # installed (matches pipeline.py's graceful degradation; see
+    # ensemble.py::_active_detector_names).
+    for name in _active_detector_names():
         assert result["base_probs"][name].shape == y.shape
+
+
+def test_nested_cv_stacking_works_without_torch(monkeypatch):
+    """Regression test for the exact bug that broke CI (numpy/scipy/pytest
+    only, no torch -- .github/workflows/test.yml): the ensemble must not
+    hard-require BiLSTM. Forces the torch-unavailable path directly rather
+    than relying on the test environment happening to lack torch."""
+    import ensemble
+
+    monkeypatch.setattr(ensemble, "_HAS_TORCH", False)
+    X, X_blackbox, X_seq, y = _synthetic_dataset(n=60, seed=12)
+    result = ensemble.nested_cv_stacking(
+        X, X_blackbox, X_seq, y,
+        outer_k=3, inner_k=3, seed=12, variant="stacker_disagreement", bilstm_epochs=3,
+    )
+    assert "bilstm" not in result["base_probs"]
+    assert set(result["base_probs"].keys()) == {"calibrated_entropy", "logistic", "mlp", "blackbox"}
+    assert result["ensemble_probs"].shape == y.shape
 
 
 def test_nested_cv_stacking_rejects_unknown_variant():

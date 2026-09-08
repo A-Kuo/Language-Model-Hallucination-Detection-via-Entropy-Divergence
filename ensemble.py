@@ -53,8 +53,32 @@ from entropy_baselines import EntropyFeatureExtractor
 from feature_engineer import AttentionFeatureEngineer
 from pipeline import build_prompt_and_text, extract_attention_from_model, extract_logits_from_model
 
+try:
+    import torch  # noqa: F401
+    _HAS_TORCH = True
+except ImportError:
+    _HAS_TORCH = False
+
+# The "full" detector roster this module documents against. Code must NOT
+# assume all 5 are always present -- BiLSTM needs torch, which this repo
+# treats as optional everywhere else (pipeline.py::run_real_pipeline skips
+# it with a printed note when unavailable; CI itself installs numpy/scipy/
+# pytest only, no torch -- see .github/workflows/test.yml). Use
+# _active_detector_names() for anything that needs the actual, current set.
 BASE_DETECTOR_NAMES = ["calibrated_entropy", "logistic", "mlp", "bilstm", "blackbox"]
 VARIANTS = ("uniform_mean", "logistic_stacker", "stacker_disagreement")
+
+
+def _active_detector_names() -> List[str]:
+    """The detector roster actually available in this environment, in the
+    same insertion order fit_base_detectors_and_predict() returns -- so
+    downstream code that assumes "column order == this list" stays correct
+    whether or not BiLSTM (torch) is available."""
+    names = ["calibrated_entropy", "logistic", "mlp"]
+    if _HAS_TORCH:
+        names.append("bilstm")
+    names.append("blackbox")
+    return names
 
 
 # =========================================================================
@@ -142,10 +166,16 @@ def fit_base_detectors_and_predict(
     X_test: np.ndarray, X_blackbox_test: np.ndarray, X_seq_test: np.ndarray,
     bilstm_epochs: int = 60,
 ) -> Dict[str, np.ndarray]:
-    """Fits all 5 base detectors on the *_train arrays, returns their
-    predict_proba output on *_test, keyed by name. The single place both
-    the inner-fold OOF loop and the outer-fold refit-and-predict step call
-    into, so the two never drift out of sync."""
+    """Fits the active base detectors (see _active_detector_names) on the
+    *_train arrays, returns their predict_proba output on *_test, keyed by
+    name, in insertion order matching _active_detector_names(). The single
+    place both the inner-fold OOF loop and the outer-fold refit-and-predict
+    step call into, so the two never drift out of sync.
+
+    BiLSTM is skipped with no error when torch isn't installed -- matching
+    pipeline.py::run_real_pipeline's existing graceful-degradation pattern
+    for the exact same detector, not a new exception to this repo's
+    "optional deps degrade cleanly" convention."""
     probs: Dict[str, np.ndarray] = {}
 
     det_ce = CalibratedEntropyDetector()
@@ -160,9 +190,10 @@ def fit_base_detectors_and_predict(
     det_mlp.fit(X_train, y_train)
     probs["mlp"] = det_mlp.predict_proba(X_test)
 
-    det_bilstm = HallucinationDetector(classifier_type="bilstm", epochs=bilstm_epochs)
-    det_bilstm.fit_sequence(X_seq_train, y_train)
-    probs["bilstm"] = det_bilstm.predict_proba_sequence(X_seq_test)
+    if _HAS_TORCH:
+        det_bilstm = HallucinationDetector(classifier_type="bilstm", epochs=bilstm_epochs)
+        det_bilstm.fit_sequence(X_seq_train, y_train)
+        probs["bilstm"] = det_bilstm.predict_proba_sequence(X_seq_test)
 
     det_bb = BlackBoxEntropyDetector()
     det_bb.fit(X_blackbox_train, y_train)
@@ -180,16 +211,23 @@ def build_meta_features(
 ) -> Tuple[np.ndarray, List[str]]:
     """
     base_probs: name -> (N,) array, all the same length and row order.
+    Column names/count are derived from base_probs's own keys (in
+    insertion order) rather than a fixed constant -- works whether this is
+    called with all 5 base detectors, a reduced set (e.g. BiLSTM dropped
+    when torch is unavailable, see _active_detector_names), or an entirely
+    different kind of "member" dict (e.g. consortium.py's per-model
+    probabilities instead of per-detector-type ones).
 
-    Columns, in order: 5 raw probabilities, 5 per-detector percentile ranks
-    (captures nonlinear miscalibration the raw score alone doesn't), then
-    -- if include_aggregate -- 4 cross-detector columns: mean, std, range
-    (max-min), and disagreement (mean pairwise absolute difference across
-    all 5 detectors -- a distinct diversity signal from std, testing
-    whether detector *conflict* itself is predictive of hallucination).
+    Columns, in order: one raw probability and one percentile-rank column
+    per member (rank captures nonlinear miscalibration the raw score alone
+    doesn't), then -- if include_aggregate -- 4 cross-member columns: mean,
+    std, range (max-min), and disagreement (mean pairwise absolute
+    difference across all members -- a distinct diversity signal from std,
+    testing whether member *conflict* itself is predictive of
+    hallucination).
     """
-    names = BASE_DETECTOR_NAMES
-    raw = np.column_stack([base_probs[n] for n in names])  # (N, 5)
+    names = list(base_probs.keys())
+    raw = np.column_stack([base_probs[n] for n in names])  # (N, len(names))
     n = raw.shape[0]
 
     ranks = np.empty_like(raw)
@@ -260,6 +298,7 @@ def _run_nested_base_detector_fits(
     -- the variants only ever differ in the meta-model, never in how the
     base detectors are trained.
     """
+    detector_names = _active_detector_names()
     outer_folds = _stratified_folds(y, outer_k, seed)
     fold_data = []
 
@@ -270,7 +309,7 @@ def _run_nested_base_detector_fits(
 
         # --- Inner loop: pooled out-of-fold meta-features over outer-train ---
         inner_folds_local = _stratified_folds(y_outer_train, inner_k, seed=seed + outer_fold + 1)
-        oof_base_probs = {name: np.zeros(len(outer_train_idx)) for name in BASE_DETECTOR_NAMES}
+        oof_base_probs = {name: np.zeros(len(outer_train_idx)) for name in detector_names}
 
         for inner_fold in range(inner_k):
             inner_val_local = inner_folds_local[inner_fold]
@@ -284,7 +323,7 @@ def _run_nested_base_detector_fits(
                 X[inner_val_global], X_blackbox[inner_val_global], X_seq[inner_val_global],
                 bilstm_epochs=bilstm_epochs,
             )
-            for name in BASE_DETECTOR_NAMES:
+            for name in detector_names:
                 oof_base_probs[name][inner_val_local] = inner_probs[name]
 
         # --- Retrain base detectors on the FULL outer-train set, predict outer-test ---
@@ -314,8 +353,9 @@ def _stack_variant(fold_data: List[Dict[str, Any]], y: np.ndarray, variant: str)
         raise ValueError(f"Unknown variant: {variant!r}. Choose from {VARIANTS}")
 
     n = len(y)
+    detector_names = list(fold_data[0]["outer_test_base_probs"].keys()) if fold_data else _active_detector_names()
     pooled_ensemble_probs = np.zeros(n)
-    pooled_base_probs = {name: np.zeros(n) for name in BASE_DETECTOR_NAMES}
+    pooled_base_probs = {name: np.zeros(n) for name in detector_names}
     include_aggregate = variant == "stacker_disagreement"
     meta_feature_names: List[str] = []
 
@@ -331,13 +371,13 @@ def _stack_variant(fold_data: List[Dict[str, Any]], y: np.ndarray, variant: str)
 
         meta_X_test, _ = build_meta_features(fd["outer_test_base_probs"], include_aggregate=include_aggregate)
         if variant == "uniform_mean":
-            ensemble_probs_fold = meta_X_test[:, :len(BASE_DETECTOR_NAMES)].mean(axis=1)
+            ensemble_probs_fold = meta_X_test[:, :len(detector_names)].mean(axis=1)
         else:
             ensemble_probs_fold = meta_model.predict_proba((meta_X_test - meta_mean) / meta_std)
 
         outer_test_idx = fd["outer_test_idx"]
         pooled_ensemble_probs[outer_test_idx] = ensemble_probs_fold
-        for name in BASE_DETECTOR_NAMES:
+        for name in detector_names:
             pooled_base_probs[name][outer_test_idx] = fd["outer_test_base_probs"][name]
 
     return {
@@ -544,10 +584,15 @@ def run_ensemble_experiment(
     bilstm_epochs: int = 60,
     results_path: Optional[str] = None,
 ) -> Dict[str, Any]:
+    if not _HAS_TORCH:
+        print("  NOTE: PyTorch not available -- BiLSTM skipped, ensemble uses "
+              f"{_active_detector_names()} (matches pipeline.py::run_real_pipeline's "
+              "existing graceful-degradation behavior for the same detector).")
+
     print(f"Extracting features for {model_name} (n={num_samples})...")
     X, X_blackbox, X_seq, y = extract_features_for_halueval(model_name, num_samples, seed)
 
-    # The expensive part (fitting 5 base detectors across outer_k*(inner_k+1)
+    # The expensive part (fitting base detectors across outer_k*(inner_k+1)
     # folds) runs exactly ONCE here and is reused by all 3 variants below --
     # they only ever differ in the meta-model step, never in how the base
     # detectors are trained. See _run_nested_base_detector_fits/_stack_variant.
@@ -583,7 +628,7 @@ def run_ensemble_experiment(
             # outer folds, same base-detector fits) -- compute once, so
             # "best individual detector" is measured on the exact same
             # splits as every ensemble variant.
-            base_report = {name: _detector_report(name, result["base_probs"][name], y) for name in BASE_DETECTOR_NAMES}
+            base_report = {name: _detector_report(name, result["base_probs"][name], y) for name in result["base_probs"]}
             best_base_name = max(base_report, key=lambda n: base_report[n]["auroc"])
             best_base_probs = result["base_probs"][best_base_name]
 
